@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { addMonths, format, startOfMonth, endOfMonth } from 'date-fns';
-import { PaymentStatus } from '@prisma/client';
+import { ContractStatus, PaymentStatus, PropertyStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
   async getOwnerStats(userId: string, role: string) {
-    const propertyWhere: any = role === 'admin' ? {} : { ownerId: userId };
-    const paymentPropertyWhere: any = role === 'admin' ? {} : { property: { ownerId: userId } };
+    const propertyWhere: any = role === Role.ADMIN ? {} : { ownerId: userId };
+    const paymentPropertyWhere: any = role === Role.ADMIN ? {} : { property: { ownerId: userId } };
 
     const [properties, contracts] = await Promise.all([
       this.prisma.property.groupBy({
@@ -19,8 +19,8 @@ export class DashboardService {
       }),
       this.prisma.contract.findMany({
         where: {
-          status: 'Active',
-          ...(role !== 'admin' ? { property: { ownerId: userId } } : {}),
+          status: ContractStatus.ACTIVE,
+          ...(role !== Role.ADMIN ? { property: { ownerId: userId } } : {}),
         },
         select: { id: true, endDate: true, tenantId: true },
       }),
@@ -40,18 +40,18 @@ export class DashboardService {
 
     const [collected, expected, late, tenants, unreadMessages, unreadNotifications] = await Promise.all([
       this.prisma.payment.aggregate({
-        where: { ...paymentPropertyWhere, status: PaymentStatus.Paid, dueDate: { gte: monthStart, lte: monthEnd } },
+        where: { ...paymentPropertyWhere, status: PaymentStatus.PAID, dueDate: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
       this.prisma.payment.aggregate({
-        where: { ...paymentPropertyWhere, dueDate: { gte: monthStart, lte: monthEnd }, status: { not: PaymentStatus.Cancelled } },
+        where: { ...paymentPropertyWhere, dueDate: { gte: monthStart, lte: monthEnd }, status: { not: PaymentStatus.CANCELLED } },
         _sum: { amount: true },
       }),
       this.prisma.payment.aggregate({
-        where: { ...paymentPropertyWhere, status: PaymentStatus.Late, dueDate: { gte: monthStart, lte: monthEnd } },
+        where: { ...paymentPropertyWhere, status: PaymentStatus.LATE, dueDate: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
-      this.prisma.tenant.count({ where: role !== 'admin' ? { ownerId: userId } : {} }),
+      this.prisma.tenant.count({ where: role !== Role.ADMIN ? { ownerId: userId } : {} }),
       this.prisma.message.count({ where: { recipientId: userId, isRead: false } }),
       this.prisma.notification.count({ where: { userId, isRead: false } }),
     ]);
@@ -61,10 +61,10 @@ export class DashboardService {
     return {
       properties: {
         total,
-        available: propMap['Available'] ?? 0,
-        rented: propMap['Rented'] ?? 0,
-        maintenance: propMap['Maintenance'] ?? 0,
-        reserved: propMap['Reserved'] ?? 0,
+        available: propMap[PropertyStatus.AVAILABLE] ?? 0,
+        rented: propMap[PropertyStatus.RENTED] ?? 0,
+        maintenance: propMap[PropertyStatus.MAINTENANCE] ?? 0,
+        reserved: propMap[PropertyStatus.RESERVED] ?? 0,
       },
       monthlyPayments: {
         collected: collected._sum.amount ?? 0,
@@ -84,7 +84,7 @@ export class DashboardService {
       where: { userId },
       include: {
         contracts: {
-          where: { status: 'Active' },
+          where: { status: ContractStatus.ACTIVE },
           take: 1,
           include: {
             property: {
@@ -104,7 +104,7 @@ export class DashboardService {
 
     const nextPayment = contract
       ? await this.prisma.payment.findFirst({
-          where: { contractId: contract.id, status: PaymentStatus.Pending },
+          where: { contractId: contract.id, status: PaymentStatus.PENDING },
           orderBy: { dueDate: 'asc' },
         })
       : null;
@@ -121,10 +121,10 @@ export class DashboardService {
 
   async getMaintenanceRequests(userId: string, role: string, query: any) {
     const where: any = {};
-    if (role === 'tenant') {
+    if (role === Role.TENANT) {
       const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
       if (tenant) where.tenantId = tenant.id;
-    } else if (role !== 'admin') {
+    } else if (role !== Role.ADMIN) {
       where.property = { ownerId: userId };
     }
 
@@ -183,8 +183,8 @@ export class DashboardService {
 
       const agg = await this.prisma.payment.aggregate({
         where: {
-          ...(role !== 'admin' ? { property: { ownerId: userId } } : {}),
-          status: PaymentStatus.Paid,
+          ...(role !== Role.ADMIN ? { property: { ownerId: userId } } : {}),
+          status: PaymentStatus.PAID,
           dueDate: { gte: start, lte: end },
         },
         _sum: { amount: true },

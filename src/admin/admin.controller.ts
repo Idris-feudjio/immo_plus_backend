@@ -6,7 +6,7 @@ import { AdminService } from './admin.service';
 
 @ApiTags('Admin')
 @Controller('admin')
-@Roles(Role.admin)
+@Roles(Role.ADMIN)
 export class AdminController {
   constructor(private service: AdminService) {}
 

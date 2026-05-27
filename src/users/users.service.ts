@@ -91,7 +91,7 @@ export class UsersService {
 
   async delegate(ownerId: string, dto: DelegationDto) {
     const manager = await this.prisma.user.findFirst({
-      where: { id: dto.managerId, role: Role.manager },
+      where: { id: dto.managerId, role: Role.MANAGER },
     });
     if (!manager) throw new NotFoundException('Gestionnaire introuvable.');
 

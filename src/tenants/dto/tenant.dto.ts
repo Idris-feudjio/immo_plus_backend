@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { ApplicationStatus } from '@prisma/client';
+import { IsEmail, IsEnum, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTenantDto {
@@ -97,6 +98,7 @@ export class CreateApplicationDto {
 }
 
 export class UpdateApplicationDto {
-  @ApiProperty({ enum: ['pending', 'accepted', 'rejected'] })
-  status: 'pending' | 'accepted' | 'rejected';
+  @ApiProperty({ enum: ApplicationStatus })
+  @IsEnum(ApplicationStatus)
+  status: ApplicationStatus;
 }

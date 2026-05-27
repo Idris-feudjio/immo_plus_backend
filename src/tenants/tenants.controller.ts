@@ -18,28 +18,28 @@ export class TenantsController {
   constructor(private service: TenantsService) {}
 
   @Get()
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Liste des locataires' })
   list(@CurrentUser() user: any, @Query() query: { search?: string; page?: number; limit?: number }) {
     return this.service.list(user.id, user.role, query);
   }
 
   @Post()
-  @Roles(Role.owner, Role.manager)
+  @Roles(Role.OWNER, Role.MANAGER)
   @ApiOperation({ summary: 'Créer un locataire' })
   create(@CurrentUser() user: any, @Body() dto: CreateTenantDto) {
     return this.service.create(user.id, dto);
   }
 
   @Get(':id')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Détail d\'un locataire' })
   getOne(@Param('id') id: string, @CurrentUser() user: any) {
     return this.service.getById(id, user.id, user.role);
   }
 
   @Patch(':id')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un locataire' })
   update(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: UpdateTenantDto) {
     return this.service.update(id, user.id, user.role, dto);
@@ -59,14 +59,14 @@ export class ApplicationsController {
   }
 
   @Get(':id/applications')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Liste des candidatures d\'un bien' })
   list(@Param('id') id: string) {
     return this.service.listApplications(id);
   }
 
   @Patch(':id/applications/:applicationId')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Mettre à jour le statut d\'une candidature' })
   updateStatus(
     @Param('id') id: string,

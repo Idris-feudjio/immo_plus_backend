@@ -23,7 +23,7 @@ export class ContractsController {
   }
 
   @Post()
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Créer un contrat' })
   create(@CurrentUser() user: any, @Body() dto: CreateContractDto) {
     return this.service.create(user.id, user.role, dto);
@@ -36,7 +36,7 @@ export class ContractsController {
   }
 
   @Post(':id/renewal')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Renouveler un contrat' })
   renew(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: RenewContractDto) {
@@ -44,7 +44,7 @@ export class ContractsController {
   }
 
   @Post(':id/termination')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Résilier un contrat' })
   terminate(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: TerminateContractDto) {
@@ -58,7 +58,7 @@ export class ContractsController {
   }
 
   @Post(':id/receipts')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Générer les quittances' })
   generateReceipts(@Param('id') id: string, @CurrentUser() user: any, @Body() body: { period: string }) {

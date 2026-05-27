@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
-import { ContractStatus, PaymentStatus } from '@prisma/client';
+import { ContractStatus, PaymentStatus, PropertyStatus } from '@prisma/client';
 import { addDays } from 'date-fns';
 
 @Injectable()
@@ -13,8 +13,8 @@ export class CronService {
   @Cron('1 0 * * *')
   async markLatePayments() {
     const result = await this.prisma.payment.updateMany({
-      where: { status: PaymentStatus.Pending, dueDate: { lt: new Date() } },
-      data: { status: PaymentStatus.Late },
+      where: { status: PaymentStatus.PENDING, dueDate: { lt: new Date() } },
+      data: { status: PaymentStatus.LATE },
     });
     this.logger.log(`Marked ${result.count} payments as Late.`);
   }
@@ -22,24 +22,24 @@ export class CronService {
   @Cron('5 0 * * *')
   async expireContracts() {
     const expired = await this.prisma.contract.findMany({
-      where: { status: ContractStatus.Active, endDate: { lt: new Date() } },
+      where: { status: ContractStatus.ACTIVE, endDate: { lt: new Date() } },
       include: { property: true },
     });
 
     for (const contract of expired) {
       await this.prisma.contract.update({
         where: { id: contract.id },
-        data: { status: ContractStatus.Expired },
+        data: { status: ContractStatus.EXPIRED },
       });
 
       await this.prisma.property.update({
         where: { id: contract.propertyId },
-        data: { status: 'Available' },
+        data: { status: PropertyStatus.AVAILABLE },
       });
 
       await this.prisma.payment.updateMany({
-        where: { contractId: contract.id, status: PaymentStatus.Pending },
-        data: { status: PaymentStatus.Cancelled },
+        where: { contractId: contract.id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.CANCELLED },
       });
 
       await this.prisma.notification.createMany({
@@ -77,7 +77,7 @@ export class CronService {
 
       const contracts = await this.prisma.contract.findMany({
         where: {
-          status: ContractStatus.Active,
+          status: ContractStatus.ACTIVE,
           endDate: { gte: startOfDay, lte: endOfDay },
         },
         include: { property: true },

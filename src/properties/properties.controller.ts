@@ -45,35 +45,35 @@ export class PropertiesController {
   }
 
   @Post()
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Créer un bien' })
   create(@CurrentUser() user: any, @Body() dto: CreatePropertyDto) {
     return this.service.create(user.id, dto);
   }
 
   @Patch(':id')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un bien' })
   update(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: UpdatePropertyDto) {
     return this.service.update(id, user.id, user.role, dto);
   }
 
   @Patch(':id/publish')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Publier / dépublier un bien' })
   publish(@Param('id') id: string, @CurrentUser() user: any, @Body() body: { isPublished: boolean }) {
     return this.service.setPublished(id, user.id, user.role, body.isPublished);
   }
 
   @Patch(':id/status')
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Changer le statut d\'un bien' })
   setStatus(@Param('id') id: string, @CurrentUser() user: any, @Body() body: { status: any }) {
     return this.service.setStatus(id, user.id, user.role, body.status);
   }
 
   @Delete(':id')
-  @Roles(Role.owner, Role.admin)
+  @Roles(Role.OWNER, Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Supprimer un bien (soft delete)' })
   remove(@Param('id') id: string, @CurrentUser() user: any) {
@@ -81,7 +81,7 @@ export class PropertiesController {
   }
 
   @Post(':id/images')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Upload des photos d\'un bien' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FilesInterceptor('images[]', 4))
@@ -99,14 +99,14 @@ export class PropertiesController {
   }
 
   @Patch(':id/images/:imageId/cover')
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Définir la photo de couverture' })
   setCover(@Param('id') id: string, @Param('imageId') imageId: string, @CurrentUser() user: any) {
     return this.service.setCover(id, imageId, user.id, user.role);
   }
 
   @Delete(':id/images/:imageId')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Supprimer une image' })
   removeImage(@Param('id') id: string, @Param('imageId') imageId: string, @CurrentUser() user: any) {
@@ -114,7 +114,7 @@ export class PropertiesController {
   }
 
   @Post(':id/documents')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Upload des documents d\'un bien' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FilesInterceptor('documents[]', 10))
@@ -132,7 +132,7 @@ export class PropertiesController {
   }
 
   @Get(':id/applications')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Liste des candidatures reçues' })
   getApplications(@Param('id') id: string) {
     return { data: [], message: 'Voir ApplicationsController' };

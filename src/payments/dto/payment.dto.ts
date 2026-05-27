@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { NotificationChannel, PaymentMethod, PaymentStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
@@ -115,7 +115,7 @@ export class SendRemindersDto {
   @IsUUID(4, { each: true })
   paymentIds: string[];
 
-  @ApiProperty({ enum: ['email', 'sms', 'both'] })
-  @IsEnum(['email', 'sms', 'both'])
-  channel: 'email' | 'sms' | 'both';
+  @ApiProperty({ enum: NotificationChannel })
+  @IsEnum(NotificationChannel)
+  channel: NotificationChannel;
 }

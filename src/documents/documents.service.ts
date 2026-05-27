@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentStatus } from '@prisma/client';
+import { ContractStatus, PaymentStatus, Role } from '@prisma/client';
 import { differenceInDays } from 'date-fns';
 
 @Injectable()
@@ -12,7 +12,7 @@ export class DocumentsService {
     role: string,
     query: { startDate?: string; endDate?: string; propertyId?: string },
   ) {
-    const propertyWhere: any = role !== 'admin' ? { ownerId: userId } : {};
+    const propertyWhere: any = role !== Role.ADMIN ? { ownerId: userId } : {};
     if (query.propertyId) propertyWhere.id = query.propertyId;
 
     const properties = await this.prisma.property.findMany({
@@ -23,7 +23,7 @@ export class DocumentsService {
     const propertyIds = properties.map((p) => p.id);
     const paymentWhere: any = {
       propertyId: { in: propertyIds },
-      status: PaymentStatus.Paid,
+      status: PaymentStatus.PAID,
     };
     if (query.startDate) paymentWhere.dueDate = { ...paymentWhere.dueDate, gte: new Date(query.startDate) };
     if (query.endDate) paymentWhere.dueDate = { ...paymentWhere.dueDate, lte: new Date(query.endDate) };
@@ -49,7 +49,7 @@ export class DocumentsService {
 
   async getOccupancyReport(userId: string, role: string, query: { year?: number; propertyId?: string }) {
     const year = query.year ?? new Date().getFullYear();
-    const propertyWhere: any = role !== 'admin' ? { ownerId: userId } : {};
+    const propertyWhere: any = role !== Role.ADMIN ? { ownerId: userId } : {};
     if (query.propertyId) propertyWhere.id = query.propertyId;
 
     const properties = await this.prisma.property.findMany({
@@ -66,7 +66,7 @@ export class DocumentsService {
         const contracts = await this.prisma.contract.findMany({
           where: {
             propertyId: prop.id,
-            status: { not: 'Terminated' },
+            status: { not: ContractStatus.TERMINATED },
             startDate: { lte: end },
             endDate: { gte: start },
           },
@@ -114,11 +114,11 @@ export class DocumentsService {
 
   async getProfitability(propertyId: string, userId: string, role: string, query: { startDate?: string; endDate?: string }) {
     const property = await this.prisma.property.findFirst({
-      where: { id: propertyId, ...(role !== 'admin' ? { ownerId: userId } : {}), deletedAt: null },
+      where: { id: propertyId, ...(role !== Role.ADMIN ? { ownerId: userId } : {}), deletedAt: null },
     });
     if (!property) return null;
 
-    const paymentWhere: any = { propertyId, status: PaymentStatus.Paid };
+    const paymentWhere: any = { propertyId, status: PaymentStatus.PAID };
     if (query.startDate) paymentWhere.dueDate = { gte: new Date(query.startDate) };
     if (query.endDate) paymentWhere.dueDate = { ...paymentWhere.dueDate, lte: new Date(query.endDate) };
 

@@ -16,21 +16,21 @@ export class DashboardController {
   ) {}
 
   @Get('stats')
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Tableau de bord propriétaire / gestionnaire' })
   getStats(@CurrentUser() user: any) {
     return this.service.getOwnerStats(user.id, user.role);
   }
 
   @Get('tenant')
-  @Roles(Role.tenant)
+  @Roles(Role.TENANT)
   @ApiOperation({ summary: 'Espace locataire' })
   getTenantDashboard(@CurrentUser() user: any) {
     return this.service.getTenantDashboard(user.id);
   }
 
   @Get('properties')
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Biens du dashboard (avec non publiés)' })
   getProperties(@CurrentUser() user: any, @Query() query: FilterPropertiesDto) {
     return this.properties.listDashboard(user.id, user.role, query);
@@ -49,14 +49,14 @@ export class MaintenanceController {
   }
 
   @Post()
-  @Roles(Role.tenant)
+  @Roles(Role.TENANT)
   @ApiOperation({ summary: 'Signaler un problème' })
   create(@CurrentUser() user: any, @Body() body: any) {
     return this.service.createMaintenanceRequest(user.id, body);
   }
 
   @Patch(':id')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mettre à jour une demande de maintenance' })
   update(@Param('id') id: string, @Body() body: any) {

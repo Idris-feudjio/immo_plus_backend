@@ -48,7 +48,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(Role.admin)
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste des utilisateurs (admin)' })
   list(@Query() query: PaginationDto & { role?: Role; search?: string; isActive?: boolean }) {
     return this.users.listUsers(query);
@@ -57,21 +57,21 @@ export class UsersController {
   @Get(':id')
   @ApiOperation({ summary: 'Détail d\'un utilisateur' })
   getOne(@Param('id') id: string, @CurrentUser() user: any) {
-    if (user.role !== Role.admin && user.id !== id) {
+    if (user.role !== Role.ADMIN && user.id !== id) {
       return this.users.getProfile(user.id);
     }
     return this.users.getUserById(id);
   }
 
   @Patch(':id')
-  @Roles(Role.admin)
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un utilisateur (admin)' })
   adminUpdate(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
     return this.users.adminUpdateUser(id, dto);
   }
 
   @Delete(':id')
-  @Roles(Role.admin)
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Désactiver un utilisateur (admin)' })
   remove(@Param('id') id: string) {
@@ -79,14 +79,14 @@ export class UsersController {
   }
 
   @Post(':ownerId/delegations')
-  @Roles(Role.owner)
+  @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Déléguer des biens à un gestionnaire' })
   delegate(@Param('ownerId') ownerId: string, @Body() dto: DelegationDto) {
     return this.users.delegate(ownerId, dto);
   }
 
   @Delete(':ownerId/delegations/:managerId')
-  @Roles(Role.owner)
+  @Roles(Role.OWNER)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Révoquer une délégation' })
   revokeDelegate(@Param('ownerId') ownerId: string, @Param('managerId') managerId: string) {

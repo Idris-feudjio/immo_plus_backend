@@ -27,9 +27,9 @@ export class RegisterDto {
   @Matches(/^\+237[0-9]{8,9}$/, { message: 'Le téléphone doit commencer par +237 et être valide.' })
   phone?: string;
 
-  @ApiProperty({ enum: ['owner', 'manager', 'tenant'] })
-  @IsEnum(['owner', 'manager', 'tenant'])
-  role: 'owner' | 'manager' | 'tenant';
+  @ApiProperty({ enum: ['OWNER', 'MANAGER', 'TENANT'] })
+  @IsEnum(['OWNER', 'MANAGER', 'TENANT'])
+  role: 'OWNER' | 'MANAGER' | 'TENANT';
 
   @ApiProperty()
   @IsString()

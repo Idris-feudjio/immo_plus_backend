@@ -11,7 +11,7 @@ import {
   UpdateTenantDto,
 } from './dto/tenant.dto';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
-import { Role } from '@prisma/client';
+import { ContractStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class TenantsService {
@@ -22,7 +22,7 @@ export class TenantsService {
     const skip = (page - 1) * limit;
 
     const where: any = {};
-    if (role !== Role.admin) where.ownerId = ownerId;
+    if (role !== Role.ADMIN) where.ownerId = ownerId;
     if (search) {
       where.OR = [
         { lastName: { contains: search, mode: 'insensitive' } },
@@ -37,7 +37,7 @@ export class TenantsService {
         take: limit,
         include: {
           contracts: {
-            where: { status: 'Active' },
+            where: { status: ContractStatus.ACTIVE },
             take: 1,
             include: { property: { select: { title: true } } },
           },
@@ -74,7 +74,7 @@ export class TenantsService {
       },
     });
     if (!tenant) throw new NotFoundException('Locataire introuvable.');
-    if (role !== Role.admin && tenant.ownerId !== ownerId) {
+    if (role !== Role.ADMIN && tenant.ownerId !== ownerId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }
     return tenant;

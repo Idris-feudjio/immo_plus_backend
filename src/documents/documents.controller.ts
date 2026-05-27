@@ -11,7 +11,7 @@ export class DocumentsController {
   constructor(private service: DocumentsService) {}
 
   @Get('financial')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Rapport financier' })
   financial(
     @CurrentUser() user: any,
@@ -46,7 +46,7 @@ export class DocumentsController {
   }
 
   @Get('profitability/:propertyId')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Analyse de rentabilité' })
   profitability(
     @Param('propertyId') propertyId: string,

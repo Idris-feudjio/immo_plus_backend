@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentStatus } from '@prisma/client';
+import { ContractStatus, PaymentStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class AdminService {
@@ -13,9 +13,9 @@ export class AdminService {
         where: { deletedAt: null },
         _count: true,
       }),
-      this.prisma.contract.count({ where: { status: 'Active' } }),
+      this.prisma.contract.count({ where: { status: ContractStatus.ACTIVE } }),
       this.prisma.payment.aggregate({
-        where: { status: PaymentStatus.Paid },
+        where: { status: PaymentStatus.PAID },
         _sum: { amount: true },
       }),
     ]);
@@ -27,10 +27,10 @@ export class AdminService {
     return {
       users: {
         total: totalUsers,
-        owners: roleMap['owner'] ?? 0,
-        tenants: roleMap['tenant'] ?? 0,
-        managers: roleMap['manager'] ?? 0,
-        admins: roleMap['admin'] ?? 0,
+        owners: roleMap[Role.OWNER] ?? 0,
+        tenants: roleMap[Role.TENANT] ?? 0,
+        managers: roleMap[Role.MANAGER] ?? 0,
+        admins: roleMap[Role.ADMIN] ?? 0,
       },
       properties: { total: properties._count, published: publishedProps },
       contracts: { active: contracts },

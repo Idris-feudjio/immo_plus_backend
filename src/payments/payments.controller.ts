@@ -23,14 +23,14 @@ export class PaymentsController {
   }
 
   @Post()
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Enregistrer un paiement' })
   create(@CurrentUser() user: any, @Body() dto: CreatePaymentDto) {
     return this.service.create(user.id, user.role, dto);
   }
 
   @Patch(':id')
-  @Roles(Role.owner, Role.manager, Role.admin)
+   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un paiement' })
   update(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: UpdatePaymentDto) {
     return this.service.update(id, user.id, user.role, dto);
@@ -43,7 +43,7 @@ export class PaymentsController {
   }
 
   @Post('reminders')
-  @Roles(Role.owner, Role.manager, Role.admin)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Envoyer des rappels' })
   sendReminders(@CurrentUser() user: any, @Body() dto: SendRemindersDto) {

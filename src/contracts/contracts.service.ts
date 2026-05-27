@@ -13,7 +13,7 @@ import {
   TerminateContractDto,
 } from './dto/contract.dto';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
-import { ContractStatus, PaymentStatus, Role } from '@prisma/client';
+import { ContractStatus, PaymentStatus, PropertyStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class ContractsService {
@@ -24,11 +24,11 @@ export class ContractsService {
     const skip = (page - 1) * limit;
 
     const where: any = {};
-    if (role === Role.tenant) {
+    if (role === Role.TENANT) {
       const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
       if (tenant) where.tenantId = tenant.id;
       else return { data: [], meta: buildPaginationMeta(0, page, limit) };
-    } else if (role !== Role.admin) {
+    } else if (role !== Role.ADMIN) {
       where.property = { ownerId: userId };
     }
 
@@ -59,16 +59,16 @@ export class ContractsService {
     });
     if (!property) throw new NotFoundException('Bien introuvable.');
 
-    if (role !== Role.admin && property.ownerId !== userId && property.managerId !== userId) {
+    if (role !== Role.ADMIN && property.ownerId !== userId && property.managerId !== userId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }
 
-    if (!['Available', 'Reserved'].includes(property.status)) {
+    if (!([PropertyStatus.AVAILABLE, PropertyStatus.RESERVED] as PropertyStatus[]).includes(property.status)) {
       throw new ConflictException({ error: 'PROPERTY_NOT_AVAILABLE', message: 'Le bien n\'est pas disponible.' });
     }
 
     const existingActive = await this.prisma.contract.findFirst({
-      where: { propertyId: dto.propertyId, status: 'Active' },
+      where: { propertyId: dto.propertyId, status: ContractStatus.ACTIVE },
     });
     if (existingActive) {
       throw new ConflictException('Un contrat actif existe déjà pour ce bien.');
@@ -85,7 +85,7 @@ export class ContractsService {
         rent: dto.rent,
         fees: dto.fees ?? 0,
         deposit: dto.deposit,
-        status: ContractStatus.Active,
+        status: ContractStatus.ACTIVE,
         clauses: { create: clauseData },
       },
       include: { clauses: true },
@@ -93,7 +93,7 @@ export class ContractsService {
 
     await this.prisma.property.update({
       where: { id: dto.propertyId },
-      data: { status: 'Rented' },
+      data: { status: PropertyStatus.RENTED },
     });
 
     await this.generatePaymentSchedule(contract.id, dto.tenantId, dto.propertyId, dto.rent, dto.fees ?? 0, new Date(dto.startDate), new Date(dto.endDate));
@@ -127,14 +127,14 @@ export class ContractsService {
 
   async renew(id: string, userId: string, role: string, dto: RenewContractDto) {
     const contract = await this.getById(id, userId, role);
-    if (!['Active', 'Expired'].includes(contract.status)) {
+    if (!([ContractStatus.ACTIVE, ContractStatus.EXPIRED] as ContractStatus[]).includes(contract.status)) {
       throw new ConflictException({ error: 'CONTRACT_NOT_RENEWABLE', message: 'Le contrat ne peut pas être renouvelé.' });
     }
 
     const oldEndDate = new Date(contract.endDate);
     const newStartDate = addDays(oldEndDate, 1);
 
-    await this.prisma.contract.update({ where: { id }, data: { status: ContractStatus.Renewal } });
+    await this.prisma.contract.update({ where: { id }, data: { status: ContractStatus.RENEWAL } });
 
     const newRent = dto.rent ?? contract.rent;
     const clauseData = (dto.clauses || []).map((text, order) => ({ text, order }));
@@ -149,7 +149,7 @@ export class ContractsService {
         fees: contract.fees,
         deposit: contract.deposit,
         parentContractId: id,
-        status: ContractStatus.Active,
+        status: ContractStatus.ACTIVE,
         clauses: { create: clauseData },
       },
     });
@@ -162,17 +162,17 @@ export class ContractsService {
   async terminate(id: string, userId: string, role: string, dto: TerminateContractDto) {
     const contract = await this.getById(id, userId, role);
 
-    await this.prisma.contract.update({ where: { id }, data: { status: ContractStatus.Terminated } });
+    await this.prisma.contract.update({ where: { id }, data: { status: ContractStatus.TERMINATED } });
 
     const terminationDate = new Date(dto.terminationDate);
     await this.prisma.payment.updateMany({
-      where: { contractId: id, status: PaymentStatus.Pending, dueDate: { gt: terminationDate } },
-      data: { status: PaymentStatus.Cancelled },
+      where: { contractId: id, status: PaymentStatus.PENDING, dueDate: { gt: terminationDate } },
+      data: { status: PaymentStatus.CANCELLED },
     });
 
     await this.prisma.property.update({
       where: { id: contract.propertyId },
-      data: { status: 'Available' },
+      data: { status: PropertyStatus.AVAILABLE },
     });
 
     await this.prisma.notification.create({
@@ -196,7 +196,7 @@ export class ContractsService {
   async generateReceipts(id: string, userId: string, role: string, period: string) {
     const contract = await this.getById(id, userId, role);
     const payments = await this.prisma.payment.findMany({
-      where: { contractId: id, period, status: PaymentStatus.Paid },
+      where: { contractId: id, period, status: PaymentStatus.PAID },
     });
     return { generated: payments.length, message: 'Quittances générées (tâche asynchrone).' };
   }
@@ -234,7 +234,7 @@ export class ContractsService {
         amount: rent + fees,
         period: monthLabel,
         dueDate,
-        status: PaymentStatus.Pending,
+        status: PaymentStatus.PENDING,
       });
 
       current = addMonths(current, 1);
@@ -244,8 +244,8 @@ export class ContractsService {
   }
 
   private async assertAccess(contract: any, userId: string, role: string) {
-    if (role === Role.admin) return;
-    if (role === Role.tenant) {
+    if (role === Role.ADMIN) return;
+    if (role === Role.TENANT) {
       const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
       if (!tenant || tenant.id !== contract.tenantId) {
         throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });

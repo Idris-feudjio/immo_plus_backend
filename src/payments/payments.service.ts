@@ -42,7 +42,7 @@ export class PaymentsService {
     const property = await this.prisma.property.findUnique({ where: { id: contract.propertyId } });
     if (!property) throw new NotFoundException('Bien introuvable.');
 
-    if (role !== Role.admin && property.ownerId !== userId && property.managerId !== userId) {
+    if (role !== Role.ADMIN && property.ownerId !== userId && property.managerId !== userId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }
 
@@ -88,10 +88,10 @@ export class PaymentsService {
 
   async getOverdue(userId: string, role: string) {
     const where: any = await this.buildOwnerWhere(userId, role, {
-      status: PaymentStatus.Pending,
+      status: PaymentStatus.PENDING,
     });
     where.dueDate = { lt: new Date() };
-    where.status = { in: [PaymentStatus.Pending, PaymentStatus.Late] };
+    where.status = { in: [PaymentStatus.PENDING, PaymentStatus.LATE] };
 
     const payments = await this.prisma.payment.findMany({
       where,
@@ -136,9 +136,9 @@ export class PaymentsService {
     }
 
     const [paid, pending, late] = await Promise.all([
-      this.prisma.payment.aggregate({ where: { ...where, status: PaymentStatus.Paid }, _sum: { amount: true }, _count: true }),
-      this.prisma.payment.aggregate({ where: { ...where, status: PaymentStatus.Pending }, _sum: { amount: true }, _count: true }),
-      this.prisma.payment.aggregate({ where: { ...where, status: PaymentStatus.Late }, _sum: { amount: true }, _count: true }),
+      this.prisma.payment.aggregate({ where: { ...where, status: PaymentStatus.PAID }, _sum: { amount: true }, _count: true }),
+      this.prisma.payment.aggregate({ where: { ...where, status: PaymentStatus.PENDING }, _sum: { amount: true }, _count: true }),
+      this.prisma.payment.aggregate({ where: { ...where, status: PaymentStatus.LATE }, _sum: { amount: true }, _count: true }),
     ]);
 
     const totalCollected = paid._sum.amount ?? 0;
@@ -165,11 +165,11 @@ export class PaymentsService {
   private async buildOwnerWhere(userId: string, role: string, filters: Partial<FilterPaymentsDto>) {
     const where: any = {};
 
-    if (role === Role.tenant) {
+    if (role === Role.TENANT) {
       const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
       if (tenant) where.tenantId = tenant.id;
       else where.id = 'never';
-    } else if (role !== Role.admin) {
+    } else if (role !== Role.ADMIN) {
       where.property = { ownerId: userId };
     }
 
@@ -191,7 +191,7 @@ export class PaymentsService {
   private async assertAccess(id: string, userId: string, role: string) {
     const payment = await this.prisma.payment.findUnique({ where: { id }, include: { property: true } });
     if (!payment) throw new NotFoundException('Paiement introuvable.');
-    if (role === Role.admin) return payment;
+    if (role === Role.ADMIN) return payment;
     if (payment.property.ownerId !== userId && payment.property.managerId !== userId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }

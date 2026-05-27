@@ -1,32 +1,32 @@
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('admin', 'owner', 'manager', 'tenant', 'visitor');
+CREATE TYPE "Role" AS ENUM ('ADMIN', 'OWNER', 'MANAGER', 'TENANT', 'VISITOR');
 
 -- CreateEnum
-CREATE TYPE "PropertyType" AS ENUM ('Apartment', 'Villa', 'Office', 'House', 'Land', 'Commercial', 'Building');
+CREATE TYPE "PropertyType" AS ENUM ('APARTMENT', 'VILLA', 'OFFICE', 'HOUSE', 'LAND', 'COMMERCIAL', 'BUILDING');
 
 -- CreateEnum
-CREATE TYPE "PropertyStatus" AS ENUM ('Available', 'Rented', 'Maintenance', 'Reserved');
+CREATE TYPE "PropertyStatus" AS ENUM ('AVAILABLE', 'RENTED', 'MAINTENANCE', 'RESERVED');
 
 -- CreateEnum
-CREATE TYPE "ContractStatus" AS ENUM ('Active', 'Expired', 'Terminated', 'Renewal');
+CREATE TYPE "ContractStatus" AS ENUM ('ACTIVE', 'EXPIRED', 'TERMINATED', 'RENEWAL');
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('Paid', 'Pending', 'Late', 'Cancelled');
+CREATE TYPE "PaymentStatus" AS ENUM ('PAID', 'PENDING', 'LATE', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "PaymentMethod" AS ENUM ('MobileMoney', 'Transfer', 'Cash', 'Card');
+CREATE TYPE "PaymentMethod" AS ENUM ('MOBILE_MONEY', 'TRANSFER', 'CASH', 'CARD');
 
 -- CreateEnum
-CREATE TYPE "ApplicationStatus" AS ENUM ('pending', 'accepted', 'rejected');
+CREATE TYPE "ApplicationStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
 
 -- CreateEnum
-CREATE TYPE "MaintenanceUrgency" AS ENUM ('low', 'normal', 'high', 'critical');
+CREATE TYPE "MaintenanceUrgency" AS ENUM ('LOW', 'NORMAL', 'HIGH', 'CRITICAL');
 
 -- CreateEnum
-CREATE TYPE "MaintenanceStatus" AS ENUM ('open', 'in_progress', 'resolved', 'closed');
+CREATE TYPE "MaintenanceStatus" AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');
 
 -- CreateEnum
-CREATE TYPE "NotificationChannel" AS ENUM ('email', 'sms', 'both');
+CREATE TYPE "NotificationChannel" AS ENUM ('EMAIL', 'SMS', 'BOTH');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -36,7 +36,7 @@ CREATE TABLE "users" (
     "email" VARCHAR(255) NOT NULL,
     "phone" VARCHAR(20),
     "passwordHash" VARCHAR(255) NOT NULL,
-    "role" "Role" NOT NULL DEFAULT 'owner',
+    "role" "Role" NOT NULL DEFAULT 'OWNER',
     "avatarUrl" TEXT,
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
@@ -100,7 +100,7 @@ CREATE TABLE "properties" (
     "bathrooms" SMALLINT,
     "floor" SMALLINT,
     "description" TEXT,
-    "status" "PropertyStatus" NOT NULL DEFAULT 'Available',
+    "status" "PropertyStatus" NOT NULL DEFAULT 'AVAILABLE',
     "ownerId" TEXT NOT NULL,
     "managerId" TEXT,
     "isPublished" BOOLEAN NOT NULL DEFAULT false,
@@ -162,7 +162,7 @@ CREATE TABLE "applications" (
     "message" TEXT,
     "income" INTEGER,
     "occupation" VARCHAR(150),
-    "status" "ApplicationStatus" NOT NULL DEFAULT 'pending',
+    "status" "ApplicationStatus" NOT NULL DEFAULT 'PENDING',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -179,7 +179,7 @@ CREATE TABLE "contracts" (
     "rent" INTEGER NOT NULL,
     "fees" INTEGER NOT NULL DEFAULT 0,
     "deposit" INTEGER NOT NULL,
-    "status" "ContractStatus" NOT NULL DEFAULT 'Active',
+    "status" "ContractStatus" NOT NULL DEFAULT 'ACTIVE',
     "parentContractId" TEXT,
     "pdfUrl" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -264,7 +264,7 @@ CREATE TABLE "payment_alert_configs" (
     "active" BOOLEAN NOT NULL DEFAULT true,
     "daysBeforeDue" INTEGER NOT NULL DEFAULT 5,
     "daysAfterDue" INTEGER[] DEFAULT ARRAY[1, 3, 7]::INTEGER[],
-    "channel" "NotificationChannel" NOT NULL DEFAULT 'email',
+    "channel" "NotificationChannel" NOT NULL DEFAULT 'EMAIL',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -278,8 +278,8 @@ CREATE TABLE "maintenance_requests" (
     "tenantId" TEXT,
     "title" VARCHAR(255) NOT NULL,
     "description" TEXT NOT NULL,
-    "urgency" "MaintenanceUrgency" NOT NULL DEFAULT 'normal',
-    "status" "MaintenanceStatus" NOT NULL DEFAULT 'open',
+    "urgency" "MaintenanceUrgency" NOT NULL DEFAULT 'NORMAL',
+    "status" "MaintenanceStatus" NOT NULL DEFAULT 'OPEN',
     "images" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "comment" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

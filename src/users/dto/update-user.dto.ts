@@ -39,8 +39,9 @@ export class AdminUpdateUserDto {
 export class DelegationDto {
   @ApiPropertyOptional()
   @IsString()
-  managerId: string;
+  @IsOptional()
+  managerId?: string;
 
   @ApiPropertyOptional()
-  propertyIds: string[];
+  propertyIds?: string[];
 }

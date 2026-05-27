@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePropertyDto, FilterPropertiesDto, UpdatePropertyDto } from './dto/create-property.dto';
 import { buildPaginationMeta } from '../common/dto/pagination.dto';
-import { PropertyStatus, Role } from '@prisma/client';
+import { ContractStatus, PropertyStatus, Role } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 
 function slugify(text: string): string {
@@ -55,7 +55,7 @@ export class PropertiesService {
   }
 
   async listDashboard(userId: string, role: string, query: FilterPropertiesDto) {
-    const ownerWhere = role === Role.admin ? {} : role === Role.manager
+    const ownerWhere = role === Role.ADMIN ? {} : role === Role.MANAGER
       ? { managerId: userId }
       : { ownerId: userId };
 
@@ -118,7 +118,7 @@ export class PropertiesService {
   }
 
   async setStatus(id: string, userId: string, role: string, status: PropertyStatus) {
-    if (status === PropertyStatus.Rented && role !== Role.admin) {
+    if (status === PropertyStatus.RENTED && role !== Role.ADMIN) {
       throw new ForbiddenException('Le statut Rented est géré automatiquement.');
     }
     await this.checkOwnership(id, userId, role);
@@ -129,7 +129,7 @@ export class PropertiesService {
     await this.checkOwnership(id, userId, role);
 
     const activeContract = await this.prisma.contract.findFirst({
-      where: { propertyId: id, status: 'Active' },
+      where: { propertyId: id, status: ContractStatus.ACTIVE },
     });
     if (activeContract) {
       throw new ConflictException({ error: 'PROPERTY_HAS_ACTIVE_CONTRACT', message: 'Impossible de supprimer un bien avec un contrat actif.' });
@@ -204,9 +204,9 @@ export class PropertiesService {
     const property = await this.prisma.property.findFirst({ where: { id, deletedAt: null } });
     if (!property) throw new NotFoundException('Bien introuvable.');
 
-    if (role === Role.admin) return property;
-    if (role === Role.owner && property.ownerId !== userId) throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-    if (role === Role.manager && property.managerId !== userId) throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
+    if (role === Role.ADMIN) return property;
+    if (role === Role.OWNER && property.ownerId !== userId) throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
+    if (role === Role.MANAGER && property.managerId !== userId) throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
 
     return property;
   }
