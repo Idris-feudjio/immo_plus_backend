@@ -1,0 +1,95 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { PaginationDto } from '../common/dto/pagination.dto';
+import { AdminUpdateUserDto, DelegationDto, UpdateProfileDto } from './dto/update-user.dto';
+import { UsersService } from './users.service';
+
+@ApiTags('Users')
+@Controller('users')
+export class UsersController {
+  constructor(private users: UsersService) {}
+
+  @Get('me')
+  @ApiOperation({ summary: 'Profil de l\'utilisateur connecté' })
+  getMe(@CurrentUser() user: any) {
+    return this.users.getProfile(user.id);
+  }
+
+  @Patch('me')
+  @ApiOperation({ summary: 'Mettre à jour le profil' })
+  updateMe(@CurrentUser() user: any, @Body() dto: UpdateProfileDto) {
+    return this.users.updateProfile(user.id, dto);
+  }
+
+  @Post('me/avatar')
+  @ApiOperation({ summary: 'Upload de l\'avatar' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadAvatar(@CurrentUser() user: any, @UploadedFile() _file: Express.Multer.File) {
+    // TODO: upload to storage and get URL
+    return this.users.updateAvatar(user.id, 'placeholder-url');
+  }
+
+  @Get()
+  @Roles(Role.admin)
+  @ApiOperation({ summary: 'Liste des utilisateurs (admin)' })
+  list(@Query() query: PaginationDto & { role?: Role; search?: string; isActive?: boolean }) {
+    return this.users.listUsers(query);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Détail d\'un utilisateur' })
+  getOne(@Param('id') id: string, @CurrentUser() user: any) {
+    if (user.role !== Role.admin && user.id !== id) {
+      return this.users.getProfile(user.id);
+    }
+    return this.users.getUserById(id);
+  }
+
+  @Patch(':id')
+  @Roles(Role.admin)
+  @ApiOperation({ summary: 'Modifier un utilisateur (admin)' })
+  adminUpdate(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
+    return this.users.adminUpdateUser(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(Role.admin)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Désactiver un utilisateur (admin)' })
+  remove(@Param('id') id: string) {
+    return this.users.softDeleteUser(id);
+  }
+
+  @Post(':ownerId/delegations')
+  @Roles(Role.owner)
+  @ApiOperation({ summary: 'Déléguer des biens à un gestionnaire' })
+  delegate(@Param('ownerId') ownerId: string, @Body() dto: DelegationDto) {
+    return this.users.delegate(ownerId, dto);
+  }
+
+  @Delete(':ownerId/delegations/:managerId')
+  @Roles(Role.owner)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Révoquer une délégation' })
+  revokeDelegate(@Param('ownerId') ownerId: string, @Param('managerId') managerId: string) {
+    return this.users.revokeDelegate(ownerId, managerId);
+  }
+}

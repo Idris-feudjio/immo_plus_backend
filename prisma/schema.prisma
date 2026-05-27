@@ -1,0 +1,414 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  admin
+  owner
+  manager
+  tenant
+  visitor
+}
+
+enum PropertyType {
+  Apartment
+  Villa
+  Office
+  House
+  Land
+  Commercial
+  Building
+}
+
+enum PropertyStatus {
+  Available
+  Rented
+  Maintenance
+  Reserved
+}
+
+enum ContractStatus {
+  Active
+  Expired
+  Terminated
+  Renewal
+}
+
+enum PaymentStatus {
+  Paid
+  Pending
+  Late
+  Cancelled
+}
+
+enum PaymentMethod {
+  MobileMoney
+  Transfer
+  Cash
+  Card
+}
+
+enum ApplicationStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum MaintenanceUrgency {
+  low
+  normal
+  high
+  critical
+}
+
+enum MaintenanceStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum NotificationChannel {
+  email
+  sms
+  both
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  lastName      String   @db.VarChar(100)
+  firstName     String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(255)
+  phone         String?  @unique @db.VarChar(20)
+  passwordHash  String   @db.VarChar(255)
+  role          Role     @default(owner)
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ownedProperties     Property[]             @relation("PropertyOwner")
+  managedProperties   Property[]             @relation("PropertyManager")
+  tenantProfile       Tenant?
+  sentMessages        Message[]              @relation("MessageSender")
+  receivedMessages    Message[]              @relation("MessageRecipient")
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  otpCodes            OtpCode[]
+  passwordResetTokens PasswordResetToken[]
+  notificationPrefs   NotificationPreference?
+  paymentAlertConfig  PaymentAlertConfig?
+
+  @@map("users")
+}
+
+model OtpCode {
+  id        String    @id @default(uuid())
+  userId    String
+  code      String    @db.VarChar(6)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otp_codes")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Property {
+  id           String         @id @default(uuid())
+  slug         String         @unique @db.VarChar(255)
+  title        String         @db.VarChar(255)
+  type         PropertyType
+  city         String         @db.VarChar(100)
+  neighborhood String         @db.VarChar(100)
+  address      String
+  latitude     Decimal?       @db.Decimal(10, 8)
+  longitude    Decimal?       @db.Decimal(11, 8)
+  price        Int
+  priceLabel   String         @db.VarChar(100)
+  area         Decimal        @db.Decimal(8, 2)
+  bedrooms     Int?           @db.SmallInt
+  bathrooms    Int?           @db.SmallInt
+  floor        Int?           @db.SmallInt
+  description  String?
+  status       PropertyStatus @default(Available)
+  ownerId      String
+  managerId    String?
+  isPublished  Boolean        @default(false)
+  deletedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  owner               User                 @relation("PropertyOwner", fields: [ownerId], references: [id])
+  manager             User?                @relation("PropertyManager", fields: [managerId], references: [id])
+  images              PropertyImage[]
+  documents           PropertyDocument[]
+  contracts           Contract[]
+  payments            Payment[]
+  applications        Application[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@map("properties")
+}
+
+model PropertyImage {
+  id         String   @id @default(uuid())
+  propertyId String
+  url        String
+  thumbUrl   String?
+  isCover    Boolean  @default(false)
+  order      Int      @db.SmallInt
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_images")
+}
+
+model PropertyDocument {
+  id           String   @id @default(uuid())
+  propertyId   String
+  name         String   @db.VarChar(255)
+  url          String
+  documentType String?  @db.VarChar(100)
+  createdAt    DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_documents")
+}
+
+model Tenant {
+  id               String   @id @default(uuid())
+  userId           String?  @unique
+  lastName         String   @db.VarChar(100)
+  firstName        String   @db.VarChar(100)
+  email            String   @db.VarChar(255)
+  phone            String   @db.VarChar(20)
+  nationalIdNumber String   @db.VarChar(50)
+  occupation       String   @db.VarChar(150)
+  income           Int
+  ownerId          String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user      User?      @relation(fields: [userId], references: [id])
+  contracts Contract[]
+  payments  Payment[]
+
+  @@map("tenants")
+}
+
+model Application {
+  id         String            @id @default(uuid())
+  propertyId String
+  tenantId   String?
+  message    String?
+  income     Int?
+  occupation String?           @db.VarChar(150)
+  status     ApplicationStatus @default(pending)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("applications")
+}
+
+model Contract {
+  id               String         @id @default(uuid())
+  propertyId       String
+  tenantId         String
+  startDate        DateTime       @db.Date
+  endDate          DateTime       @db.Date
+  rent             Int
+  fees             Int            @default(0)
+  deposit          Int
+  status           ContractStatus @default(Active)
+  parentContractId String?
+  pdfUrl           String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  property       Property         @relation(fields: [propertyId], references: [id])
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  parentContract Contract?        @relation("ContractRenewal", fields: [parentContractId], references: [id])
+  renewals       Contract[]       @relation("ContractRenewal")
+  clauses        ContractClause[]
+  payments       Payment[]
+
+  @@map("contracts")
+}
+
+model ContractClause {
+  id         String @id @default(uuid())
+  contractId String
+  text       String
+  order      Int    @db.SmallInt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@map("contract_clauses")
+}
+
+model Payment {
+  id            String         @id @default(uuid())
+  contractId    String
+  tenantId      String
+  propertyId    String
+  amount        Int
+  period        String         @db.VarChar(20)
+  paymentDate   DateTime?      @db.Date
+  dueDate       DateTime       @db.Date
+  status        PaymentStatus
+  paymentMethod PaymentMethod?
+  reference     String?        @db.VarChar(100)
+  receiptUrl    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@map("payments")
+}
+
+model Message {
+  id            String   @id @default(uuid())
+  senderId      String
+  recipientId   String
+  content       String
+  isRead        Boolean  @default(false)
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+
+  sender    User @relation("MessageSender", fields: [senderId], references: [id])
+  recipient User @relation("MessageRecipient", fields: [recipientId], references: [id])
+
+  @@map("messages")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(255)
+  body      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  emailPrefs Json     @default("{}")
+  smsPrefs   Json     @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model PaymentAlertConfig {
+  id            String              @id @default(uuid())
+  userId        String              @unique
+  active        Boolean             @default(true)
+  daysBeforeDue Int                 @default(5)
+  daysAfterDue  Int[]               @default([1, 3, 7])
+  channel       NotificationChannel @default(email)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payment_alert_configs")
+}
+
+model MaintenanceRequest {
+  id          String             @id @default(uuid())
+  propertyId  String
+  tenantId    String?
+  title       String             @db.VarChar(255)
+  description String
+  urgency     MaintenanceUrgency @default(normal)
+  status      MaintenanceStatus  @default(open)
+  images      String[]           @default([])
+  comment     String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@map("maintenance_requests")
+}
+
+model AdminSettings {
+  id                    String   @id @default(uuid())
+  platformName          String   @default("Immo Plus CM") @db.VarChar(100)
+  supportEmail          String   @default("support@immoplus.cm") @db.VarChar(255)
+  daysBeforeDueReminder Int      @default(5)
+  daysAfterLateReminder Int[]    @default([1, 3, 7])
+  vatRate               Decimal  @default(19.25) @db.Decimal(5, 2)
+  defaultClauses        String[] @default([])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("admin_settings")
+}
+
+model ReportJob {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   @db.VarChar(50)
+  params    Json     @default("{}")
+  status    String   @default("pending") @db.VarChar(20)
+  pdfUrl    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("report_jobs")
+}
