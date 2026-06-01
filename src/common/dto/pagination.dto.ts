@@ -27,8 +27,8 @@ export class PaginationDto {
 export function buildPaginationMeta(total: number, page: number, limit: number) {
   return {
     total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
+    pageNumber: page > 0 ? page - 1 : 0,
+    pageSize: limit,
+    totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
   };
 }

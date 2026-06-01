@@ -1,84 +1,59 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { buildPaginationMeta } from '../common/dto/pagination.dto';
+import { Notification, NotificationPreference, PaymentAlertConfig } from '@prisma/client';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { INotificationsService } from './interfaces/notification-service.interface';
+import { NotificationRepository } from './notification.repository';
 
 @Injectable()
-export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+export class NotificationsService implements INotificationsService {
+  constructor(private readonly repository: NotificationRepository) {}
 
-  async list(userId: string, query: { isRead?: boolean; type?: string; page?: number; limit?: number }) {
-    const { page = 1, limit = 20, isRead, type } = query;
-    const skip = (page - 1) * limit;
-
-    const where: any = { userId };
-    if (isRead !== undefined) where.isRead = isRead === true || isRead === ('true' as any);
-    if (type) where.type = type;
-
-    const [data, total] = await Promise.all([
-      this.prisma.notification.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
-      this.prisma.notification.count({ where }),
-    ]);
-
-    return { data, meta: buildPaginationMeta(total, page, limit) };
+  list(
+    userId: string,
+    query: { isRead?: boolean; type?: string; page?: number; limit?: number },
+  ): Promise<PaginatedResult<Notification>> {
+    return this.repository.findPaginated(userId, query);
   }
 
-  async markRead(userId: string, id: string) {
-    return this.prisma.notification.update({
-      where: { id, userId },
-      data: { isRead: true },
-    });
+  markRead(userId: string, id: string): Promise<Notification> {
+    return this.repository.markReadById(id, userId);
   }
 
-  async markAllRead(userId: string) {
-    await this.prisma.notification.updateMany({ where: { userId, isRead: false }, data: { isRead: true } });
+  async markAllRead(userId: string): Promise<{ message: string }> {
+    await this.repository.markAllReadByUser(userId);
     return { message: 'Toutes les notifications marquées comme lues.' };
   }
 
-  async getCount(userId: string) {
-    const count = await this.prisma.notification.count({ where: { userId, isRead: false } });
+  async getCount(userId: string): Promise<{ count: number }> {
+    const count = await this.repository.countUnread(userId);
     return { count };
   }
 
-  async getPreferences(userId: string) {
-    let prefs = await this.prisma.notificationPreference.findUnique({ where: { userId } });
-    if (!prefs) {
-      prefs = await this.prisma.notificationPreference.create({
-        data: { userId },
-      });
-    }
-    return prefs;
+  getPreferences(userId: string): Promise<NotificationPreference> {
+    return this.repository.findOrCreatePreferences(userId);
   }
 
-  async updatePreferences(userId: string, body: { email?: Record<string, boolean>; sms?: Record<string, boolean> }) {
-    return this.prisma.notificationPreference.upsert({
-      where: { userId },
-      create: {
-        userId,
-        emailPrefs: body.email ?? {},
-        smsPrefs: body.sms ?? {},
-      },
-      update: {
-        emailPrefs: body.email ?? undefined,
-        smsPrefs: body.sms ?? undefined,
-      },
-    });
+  updatePreferences(
+    userId: string,
+    body: { email?: Record<string, boolean>; sms?: Record<string, boolean> },
+  ): Promise<NotificationPreference> {
+    return this.repository.upsertPreferences(userId, body);
   }
 
-  async upsertPaymentAlerts(userId: string, config: any) {
-    return this.prisma.paymentAlertConfig.upsert({
-      where: { userId },
-      create: { userId, ...config },
-      update: config,
-    });
+  upsertPaymentAlerts(
+    userId: string,
+    config: Record<string, unknown>,
+  ): Promise<PaymentAlertConfig> {
+    return this.repository.upsertPaymentAlerts(userId, config);
   }
 
-  async create(data: {
+  create(data: {
     userId: string;
     type: string;
     title: string;
     body: string;
     link?: string;
-  }) {
-    return this.prisma.notification.create({ data });
+  }): Promise<Notification> {
+    return this.repository.create(data);
   }
 }

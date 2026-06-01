@@ -6,7 +6,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.setGlobalPrefix('v1');
+  app.setGlobalPrefix('api');
 
   app.enableCors({
     origin: [
@@ -28,7 +28,7 @@ async function bootstrap() {
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Immo Plus CM API')
+    .setTitle('Immo Plus API')
     .setDescription('API REST pour la plateforme de gestion immobilière Immo Plus CM')
     .setVersion('1.0')
     .addBearerAuth()
@@ -39,7 +39,7 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  console.log(`🚀 Immo Plus CM API running on http://localhost:${port}/v1`);
+  console.log(`🚀 Immo Plus API running on http://localhost:${port}/api`);
   console.log(`📖 Swagger docs: http://localhost:${port}/docs`);
 }
 

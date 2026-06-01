@@ -4,11 +4,28 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreatePropertyDto, FilterPropertiesDto, UpdatePropertyDto } from './dto/create-property.dto';
-import { buildPaginationMeta } from '../common/dto/pagination.dto';
-import { ContractStatus, PropertyStatus, Role } from '@prisma/client';
+import {
+  Property,
+  PropertyDocument,
+  PropertyImage,
+  PropertyStatus,
+  Role,
+} from '@prisma/client';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { SearchRequest, SortClause } from '../common/interfaces/search-request.interface';
 import { v4 as uuidv4 } from 'uuid';
+import { CreatePropertyDto, FilterPropertiesDto, UpdatePropertyDto } from './dto/create-property.dto';
+import {
+  IPropertyService,
+  PropertyDocumentInput,
+  PropertyImageInput,
+} from './interfaces/property-service.interface';
+import {
+  PropertyCreateData,
+  PropertyListItem,
+  PropertyRepository,
+  PropertyWithDetails,
+} from './property.repository';
 
 function slugify(text: string): string {
   return text
@@ -19,230 +36,239 @@ function slugify(text: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-function priceLabel(price: number): string {
+function buildPriceLabel(price: number): string {
   return price.toLocaleString('fr-FR') + ' FCFA/mois';
 }
 
-const PROPERTY_LIST_SELECT = {
-  id: true,
-  slug: true,
-  title: true,
-  type: true,
-  city: true,
-  neighborhood: true,
-  address: true,
-  price: true,
-  priceLabel: true,
-  area: true,
-  bedrooms: true,
-  bathrooms: true,
-  status: true,
-  isPublished: true,
-  createdAt: true,
-  images: {
-    where: { isCover: true },
-    take: 1,
-    select: { url: true, thumbUrl: true },
-  },
-};
-
 @Injectable()
-export class PropertiesService {
-  constructor(private prisma: PrismaService) {}
+export class PropertiesService implements IPropertyService {
+  constructor(private readonly repository: PropertyRepository) {}
 
-  async listPublic(query: FilterPropertiesDto) {
-    return this.buildList({ ...query, isPublished: true });
+  listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {
+    return this.repository.findListPaginated(
+      this.toSearchRequest(query),
+      { isPublished: true },
+    );
   }
 
-  async listDashboard(userId: string, role: string, query: FilterPropertiesDto) {
-    const ownerWhere = role === Role.ADMIN ? {} : role === Role.MANAGER
-      ? { managerId: userId }
-      : { ownerId: userId };
+  listDashboard(
+    userId: string,
+    role: string,
+    query: FilterPropertiesDto,
+  ): Promise<PaginatedResult<PropertyListItem>> {
+    const extraWhere =
+      role === Role.ADMIN ? {} :
+      role === Role.MANAGER ? { managerId: userId } :
+      { ownerId: userId };
 
-    return this.buildList({ ...query, deletedAt: null }, ownerWhere);
+    return this.repository.findListPaginated(this.toSearchRequest(query), extraWhere);
   }
 
-  async getBySlug(slug: string) {
-    const property = await this.prisma.property.findFirst({
-      where: { slug, isPublished: true, deletedAt: null },
-      include: {
-        images: { orderBy: { order: 'asc' } },
-        documents: true,
-      },
-    });
+  async getBySlug(slug: string): Promise<PropertyWithDetails> {
+    const property = await this.repository.findBySlugPublic(slug);
     if (!property) throw new NotFoundException('Bien introuvable.');
     return property;
   }
 
-  async getById(id: string) {
-    const property = await this.prisma.property.findFirst({
-      where: { id, deletedAt: null },
-      include: { images: { orderBy: { order: 'asc' } }, documents: true },
-    });
+  async getById(id: string): Promise<PropertyWithDetails> {
+    const property = await this.repository.findByIdWithDetails(id);
     if (!property) throw new NotFoundException('Bien introuvable.');
     return property;
   }
 
-  async create(ownerId: string, dto: CreatePropertyDto) {
-    const base = slugify(dto.title);
-    const slug = `${base}-${uuidv4().substring(0, 8)}`;
-
-    return this.prisma.property.create({
-      data: {
-        ...dto,
-        slug,
-        priceLabel: priceLabel(dto.price),
-        ownerId,
-      },
+  async create(ownerId: string, dto: CreatePropertyDto): Promise<Property> {
+    const slug = `${slugify(dto.title)}-${uuidv4().substring(0, 8)}`;
+    return this.repository.create({
+      ...dto,
+      slug,
+      priceLabel: buildPriceLabel(dto.price),
+      ownerId,
     });
   }
 
-  async update(id: string, userId: string, role: string, dto: UpdatePropertyDto) {
+  async update(
+    id: string,
+    userId: string,
+    role: string,
+    dto: UpdatePropertyDto,
+  ): Promise<Property> {
     await this.checkOwnership(id, userId, role);
-    const data: any = { ...dto };
-    if (dto.price !== undefined) data.priceLabel = priceLabel(dto.price);
-    return this.prisma.property.update({ where: { id }, data });
+    const data: Partial<PropertyCreateData> = { ...dto };
+    if (dto.price !== undefined) data.priceLabel = buildPriceLabel(dto.price);
+    return this.repository.update(id, data);
   }
 
-  async setPublished(id: string, userId: string, role: string, isPublished: boolean) {
-    const property = await this.checkOwnership(id, userId, role);
+  async setPublished(
+    id: string,
+    userId: string,
+    role: string,
+    isPublished: boolean,
+  ): Promise<Property> {
+    await this.checkOwnership(id, userId, role);
 
     if (isPublished) {
-      const imageCount = await this.prisma.propertyImage.count({ where: { propertyId: id } });
+      const imageCount = await this.repository.countImages(id);
       if (imageCount === 0) {
         throw new ConflictException('Le bien doit avoir au moins 1 image pour être publié.');
       }
     }
 
-    return this.prisma.property.update({ where: { id }, data: { isPublished } });
+    return this.repository.update(id, { isPublished });
   }
 
-  async setStatus(id: string, userId: string, role: string, status: PropertyStatus) {
+  async setStatus(
+    id: string,
+    userId: string,
+    role: string,
+    status: PropertyStatus,
+  ): Promise<Property> {
     if (status === PropertyStatus.RENTED && role !== Role.ADMIN) {
       throw new ForbiddenException('Le statut Rented est géré automatiquement.');
     }
     await this.checkOwnership(id, userId, role);
-    return this.prisma.property.update({ where: { id }, data: { status } });
+    return this.repository.update(id, { status });
   }
 
-  async remove(id: string, userId: string, role: string) {
+  async remove(id: string, userId: string, role: string): Promise<void> {
     await this.checkOwnership(id, userId, role);
 
-    const activeContract = await this.prisma.contract.findFirst({
-      where: { propertyId: id, status: ContractStatus.ACTIVE },
-    });
-    if (activeContract) {
-      throw new ConflictException({ error: 'PROPERTY_HAS_ACTIVE_CONTRACT', message: 'Impossible de supprimer un bien avec un contrat actif.' });
+    if (await this.repository.hasActiveContract(id)) {
+      throw new ConflictException({
+        error: 'PROPERTY_HAS_ACTIVE_CONTRACT',
+        message: 'Impossible de supprimer un bien avec un contrat actif.',
+      });
     }
 
-    await this.prisma.property.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+    await this.repository.softDelete(id);
   }
 
-  async addImages(id: string, userId: string, role: string, images: { url: string; thumbUrl: string }[]) {
+  async addImages(
+    id: string,
+    userId: string,
+    role: string,
+    images: PropertyImageInput[],
+  ): Promise<{ images: PropertyImage[] }> {
     await this.checkOwnership(id, userId, role);
 
-    const currentCount = await this.prisma.propertyImage.count({ where: { propertyId: id } });
+    const currentCount = await this.repository.countImages(id);
     if (currentCount + images.length > 4) {
-      throw new ConflictException({ error: 'MAX_IMAGES_REACHED', message: 'Maximum 4 images par bien.' });
+      throw new ConflictException({
+        error: 'MAX_IMAGES_REACHED',
+        message: 'Maximum 4 images par bien.',
+      });
     }
 
-    const lastOrder = currentCount;
-    const hasCover = await this.prisma.propertyImage.findFirst({ where: { propertyId: id, isCover: true } });
+    const hasCover = await this.repository.findFirstCoverImage(id);
 
-    const created = await Promise.all(
-      images.map((img, idx) =>
-        this.prisma.propertyImage.create({
-          data: {
-            propertyId: id,
-            url: img.url,
-            thumbUrl: img.thumbUrl,
-            isCover: !hasCover && idx === 0,
-            order: lastOrder + idx,
-          },
-        }),
-      ),
-    );
+    const items = images.map((img, idx) => ({
+      propertyId: id,
+      url: img.url,
+      thumbUrl: img.thumbUrl,
+      isCover: !hasCover && idx === 0,
+      order: currentCount + idx,
+    }));
 
+    const created = await this.repository.createImages(items);
     return { images: created };
   }
 
-  async setCover(propertyId: string, imageId: string, userId: string, role: string) {
+  async setCover(
+    propertyId: string,
+    imageId: string,
+    userId: string,
+    role: string,
+  ): Promise<PropertyImage> {
     await this.checkOwnership(propertyId, userId, role);
-    await this.prisma.propertyImage.updateMany({ where: { propertyId }, data: { isCover: false } });
-    return this.prisma.propertyImage.update({ where: { id: imageId }, data: { isCover: true } });
+    return this.repository.setCoverImage(propertyId, imageId);
   }
 
-  async removeImage(propertyId: string, imageId: string, userId: string, role: string) {
+  async removeImage(
+    propertyId: string,
+    imageId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
     await this.checkOwnership(propertyId, userId, role);
-    const img = await this.prisma.propertyImage.findFirst({ where: { id: imageId, propertyId } });
+
+    const img = await this.repository.findImageById(imageId, propertyId);
     if (!img) throw new NotFoundException('Image introuvable.');
 
-    await this.prisma.propertyImage.delete({ where: { id: imageId } });
+    await this.repository.deleteImageById(imageId);
 
     if (img.isCover) {
-      const next = await this.prisma.propertyImage.findFirst({ where: { propertyId }, orderBy: { order: 'asc' } });
-      if (next) await this.prisma.propertyImage.update({ where: { id: next.id }, data: { isCover: true } });
+      const next = await this.repository.findFirstImage(propertyId);
+      if (next) await this.repository.setImageCover(next.id, true);
     }
   }
 
-  async addDocuments(propertyId: string, userId: string, role: string, docs: { name: string; url: string }[]) {
+  async addDocuments(
+    propertyId: string,
+    userId: string,
+    role: string,
+    docs: PropertyDocumentInput[],
+  ): Promise<{ documents: PropertyDocument[] }> {
     await this.checkOwnership(propertyId, userId, role);
-    const created = await Promise.all(
-      docs.map((doc) =>
-        this.prisma.propertyDocument.create({ data: { propertyId, name: doc.name, url: doc.url } }),
-      ),
+    const created = await this.repository.createDocuments(
+      docs.map((doc) => ({ propertyId, name: doc.name, url: doc.url })),
     );
     return { documents: created };
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────────
+  // ─── Private helpers ────────────────────────────────────────────────────────
 
-  private async checkOwnership(id: string, userId: string, role: string) {
-    const property = await this.prisma.property.findFirst({ where: { id, deletedAt: null } });
+  /**
+   * Convert FilterPropertiesDto (HTTP query params, 1-based page) into the
+   * generic SearchRequest used by the repository layer (0-based pageNumber).
+   */
+  private toSearchRequest(dto: FilterPropertiesDto): SearchRequest {
+    const filters: Record<string, string[]> = {};
+
+    if (dto.city)               filters.city         = [dto.city];
+    if (dto.neighborhood)       filters.neighborhood = [dto.neighborhood];
+    if (dto.type)               filters.type         = [dto.type];
+    if (dto.status)             filters.status       = [dto.status];
+    if (dto.bedrooms !== undefined) filters.bedrooms = [String(dto.bedrooms)];
+    if (dto.minPrice !== undefined || dto.maxPrice !== undefined) {
+      filters.price = [String(dto.minPrice ?? ''), String(dto.maxPrice ?? '')];
+    }
+    if (dto.minArea !== undefined || dto.maxArea !== undefined) {
+      filters.area = [String(dto.minArea ?? ''), String(dto.maxArea ?? '')];
+    }
+
+    const sortClauses: SortClause[] = [];
+    if (dto.sort === 'price')     sortClauses.push({ fieldName: 'price',     direction: 'ASC' });
+    else if (dto.sort === '-price')    sortClauses.push({ fieldName: 'price',     direction: 'DESC' });
+    else if (dto.sort === 'createdAt') sortClauses.push({ fieldName: 'createdAt', direction: 'ASC' });
+    else                               sortClauses.push({ fieldName: 'createdAt', direction: 'DESC' });
+
+    return {
+      searchKey:  dto.search,
+      filters,
+      pageNumber: (dto.page ?? 1) - 1,   // FilterPropertiesDto is 1-based → 0-based
+      pageSize:   dto.limit ?? 20,
+      sortClauses,
+    };
+  }
+
+  private async checkOwnership(id: string, userId: string, role: string): Promise<Property> {
+    const property = await this.repository.findByIdActive(id);
     if (!property) throw new NotFoundException('Bien introuvable.');
 
     if (role === Role.ADMIN) return property;
-    if (role === Role.OWNER && property.ownerId !== userId) throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-    if (role === Role.MANAGER && property.managerId !== userId) throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
 
-    return property;
-  }
-
-  private async buildList(query: FilterPropertiesDto & { deletedAt?: null }, extraWhere: any = {}) {
-    const { page = 1, limit = 20, sort, isPublished, ...filters } = query;
-    const skip = (page - 1) * limit;
-
-    const where: any = { deletedAt: null, ...extraWhere };
-
-    if (isPublished !== undefined) where.isPublished = isPublished === true || isPublished === ('true' as any);
-    if (filters.city) where.city = { contains: filters.city, mode: 'insensitive' };
-    if (filters.neighborhood) where.neighborhood = { contains: filters.neighborhood, mode: 'insensitive' };
-    if (filters.type) where.type = filters.type;
-    if (filters.status) where.status = filters.status;
-    if (filters.bedrooms) where.bedrooms = filters.bedrooms;
-    if (filters.minPrice || filters.maxPrice) where.price = { gte: filters.minPrice, lte: filters.maxPrice };
-    if (filters.minArea || filters.maxArea) where.area = { gte: filters.minArea, lte: filters.maxArea };
-    if (filters.search) {
-      where.OR = [
-        { title: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
-        { address: { contains: filters.search, mode: 'insensitive' } },
-      ];
+    if (role === Role.OWNER && property.ownerId !== userId) {
+      throw new ForbiddenException({
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'Droits insuffisants.',
+      });
+    }
+    if (role === Role.MANAGER && property.managerId !== userId) {
+      throw new ForbiddenException({
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'Droits insuffisants.',
+      });
     }
 
-    let orderBy: any = { createdAt: 'desc' };
-    if (sort === 'price') orderBy = { price: 'asc' };
-    if (sort === '-price') orderBy = { price: 'desc' };
-    if (sort === 'createdAt') orderBy = { createdAt: 'asc' };
-
-    const [data, total] = await Promise.all([
-      this.prisma.property.findMany({ where, skip, take: limit, select: PROPERTY_LIST_SELECT as any, orderBy }),
-      this.prisma.property.count({ where }),
-    ]);
-
-    return { data, meta: buildPaginationMeta(total, page, limit) };
+    return property;
   }
 }

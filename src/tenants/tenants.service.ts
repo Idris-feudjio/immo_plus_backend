@@ -1,127 +1,83 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Application, Tenant } from '@prisma/client';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import {
   CreateApplicationDto,
   CreateTenantDto,
   UpdateApplicationDto,
   UpdateTenantDto,
 } from './dto/tenant.dto';
-import { buildPaginationMeta } from '../common/dto/pagination.dto';
-import { ContractStatus, Role } from '@prisma/client';
+import type { ITenantsService } from './interfaces/tenants-service.interface';
+import { TenantRepository } from './tenant.repository';
 
 @Injectable()
-export class TenantsService {
-  constructor(private prisma: PrismaService) {}
+export class TenantsService implements ITenantsService {
+  constructor(private readonly repository: TenantRepository) {}
 
-  async list(ownerId: string, role: string, query: { search?: string; page?: number; limit?: number }) {
-    const { page = 1, limit = 20, search } = query;
-    const skip = (page - 1) * limit;
-
-    const where: any = {};
-    if (role !== Role.ADMIN) where.ownerId = ownerId;
-    if (search) {
-      where.OR = [
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.tenant.findMany({
-        where,
-        skip,
-        take: limit,
-        include: {
-          contracts: {
-            where: { status: ContractStatus.ACTIVE },
-            take: 1,
-            include: { property: { select: { title: true } } },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.tenant.count({ where }),
-    ]);
-
-    return { data, meta: buildPaginationMeta(total, page, limit) };
+  list(
+    ownerId: string,
+    role: string,
+    query: { search?: string; page?: number; limit?: number },
+  ): Promise<PaginatedResult<Tenant>> {
+    return this.repository.findListPaginated(ownerId, role, query);
   }
 
-  async create(ownerId: string, dto: CreateTenantDto) {
-    const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
-
-    return this.prisma.tenant.create({
-      data: {
-        ...dto,
-        ownerId,
-        userId: existingUser?.id ?? undefined,
-      },
+  async create(ownerId: string, dto: CreateTenantDto): Promise<Tenant> {
+    const existingUser = await this.repository.findUserByEmail(dto.email);
+    return this.repository.create({
+      ...dto,
+      ownerId,
+      userId: existingUser?.id,
     });
   }
 
-  async getById(id: string, ownerId: string, role: string) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id },
-      include: {
-        contracts: {
-          include: { property: { select: { id: true, title: true, slug: true } } },
-          orderBy: { createdAt: 'desc' },
-        },
-        payments: { orderBy: { dueDate: 'desc' }, take: 20 },
-      },
-    });
+  async getById(id: string, ownerId: string, role: string): Promise<Tenant> {
+    const tenant = await this.repository.findByIdWithRelations(id);
     if (!tenant) throw new NotFoundException('Locataire introuvable.');
-    if (role !== Role.ADMIN && tenant.ownerId !== ownerId) {
+    if (role !== 'ADMIN' && (tenant as never as { ownerId: string }).ownerId !== ownerId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }
     return tenant;
   }
 
-  async update(id: string, ownerId: string, role: string, dto: UpdateTenantDto) {
+  async update(id: string, ownerId: string, role: string, dto: UpdateTenantDto): Promise<Tenant> {
     await this.getById(id, ownerId, role);
-    return this.prisma.tenant.update({ where: { id }, data: dto });
+    return this.repository.update(id, dto as never);
   }
 
-  async createApplication(propertySlug: string, dto: CreateApplicationDto) {
-    const property = await this.prisma.property.findFirst({ where: { slug: propertySlug, deletedAt: null } });
+  async createApplication(propertySlug: string, dto: CreateApplicationDto): Promise<Application> {
+    const property = await this.repository.findPropertyBySlug(propertySlug);
     if (!property) throw new NotFoundException('Bien introuvable.');
 
-    const application = await this.prisma.application.create({
-      data: {
-        propertyId: property.id,
-        tenantId: dto.tenantId,
-        message: dto.message,
-        income: dto.income,
-        occupation: dto.occupation,
-      },
+    const application = await this.repository.createApplication({
+      propertyId: property.id,
+      tenantId: dto.tenantId,
+      message: dto.message,
+      income: dto.income,
+      occupation: dto.occupation,
     });
 
-    await this.prisma.notification.create({
-      data: {
-        userId: property.ownerId,
-        type: 'application_received',
-        title: 'Nouvelle candidature',
-        body: `Une nouvelle candidature a été reçue pour "${property.title}".`,
-        link: `/properties/${property.id}/applications`,
-      },
+    await this.repository.createNotification({
+      userId: property.ownerId,
+      type: 'application_received',
+      title: 'Nouvelle candidature',
+      body: `Une nouvelle candidature a été reçue pour "${property.title}".`,
+      link: `/properties/${property.id}/applications`,
     });
 
     return application;
   }
 
-  async listApplications(propertyId: string) {
-    return this.prisma.application.findMany({
-      where: { propertyId },
-      orderBy: { createdAt: 'desc' },
-    });
+  listApplications(propertyId: string): Promise<Application[]> {
+    return this.repository.findApplications(propertyId);
   }
 
-  async updateApplication(propertyId: string, applicationId: string, dto: UpdateApplicationDto) {
-    const app = await this.prisma.application.findFirst({ where: { id: applicationId, propertyId } });
-    if (!app) throw new NotFoundException('Candidature introuvable.');
-    return this.prisma.application.update({ where: { id: applicationId }, data: { status: dto.status } });
+  async updateApplication(
+    propertyId: string,
+    applicationId: string,
+    dto: UpdateApplicationDto,
+  ): Promise<Application> {
+    await this.repository.findApplicationByIdOrThrow(applicationId, propertyId);
+    return this.repository.updateApplicationStatus(applicationId, dto.status);
   }
 }

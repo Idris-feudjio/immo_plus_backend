@@ -1,47 +1,65 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import {
   CreateApplicationDto,
   CreateTenantDto,
   UpdateApplicationDto,
   UpdateTenantDto,
 } from './dto/tenant.dto';
-import { TenantsService } from './tenants.service';
+import type { ITenantsService } from './interfaces/tenants-service.interface';
+import { TENANTS_SERVICE } from './interfaces/tenants-service.interface';
 
 @ApiTags('Tenants')
 @Controller('tenants')
 export class TenantsController {
-  constructor(private service: TenantsService) {}
+  constructor(@Inject(TENANTS_SERVICE) private readonly service: ITenantsService) {}
 
   @Get()
-   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Liste des locataires' })
-  list(@CurrentUser() user: any, @Query() query: { search?: string; page?: number; limit?: number }) {
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query() query: { search?: string; page?: number; limit?: number },
+  ) {
     return this.service.list(user.id, user.role, query);
   }
 
   @Post()
   @Roles(Role.OWNER, Role.MANAGER)
   @ApiOperation({ summary: 'Créer un locataire' })
-  create(@CurrentUser() user: any, @Body() dto: CreateTenantDto) {
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateTenantDto) {
     return this.service.create(user.id, dto);
   }
 
   @Get(':id')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: 'Détail d\'un locataire' })
-  getOne(@Param('id') id: string, @CurrentUser() user: any) {
+  @ApiOperation({ summary: "Détail d'un locataire" })
+  getOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.service.getById(id, user.id, user.role);
   }
 
   @Patch(':id')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un locataire' })
-  update(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: UpdateTenantDto) {
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateTenantDto,
+  ) {
     return this.service.update(id, user.id, user.role, dto);
   }
 }
@@ -49,7 +67,7 @@ export class TenantsController {
 @ApiTags('Properties')
 @Controller('properties')
 export class ApplicationsController {
-  constructor(private service: TenantsService) {}
+  constructor(@Inject(TENANTS_SERVICE) private readonly service: ITenantsService) {}
 
   @Public()
   @Post(':slug/applications')
@@ -60,14 +78,14 @@ export class ApplicationsController {
 
   @Get(':id/applications')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: 'Liste des candidatures d\'un bien' })
+  @ApiOperation({ summary: "Liste des candidatures d'un bien" })
   list(@Param('id') id: string) {
     return this.service.listApplications(id);
   }
 
   @Patch(':id/applications/:applicationId')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une candidature' })
+  @ApiOperation({ summary: "Mettre à jour le statut d'une candidature" })
   updateStatus(
     @Param('id') id: string,
     @Param('applicationId') applicationId: string,

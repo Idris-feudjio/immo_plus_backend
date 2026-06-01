@@ -1,31 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { buildPaginationMeta } from '../common/dto/pagination.dto';
+import { Injectable } from '@nestjs/common';
+import { Message } from '@prisma/client';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { ConversationItem, IMessagesService } from './interfaces/message-service.interface';
+import { MessageRepository } from './message.repository';
 
 @Injectable()
-export class MessagesService {
-  constructor(private prisma: PrismaService) {}
+export class MessagesService implements IMessagesService {
+  constructor(private readonly repository: MessageRepository) {}
 
-  async getConversations(userId: string) {
-    const messages = await this.prisma.message.findMany({
-      where: { OR: [{ senderId: userId }, { recipientId: userId }] },
-      include: {
-        sender: { select: { id: true, lastName: true, firstName: true, avatarUrl: true } },
-        recipient: { select: { id: true, lastName: true, firstName: true, avatarUrl: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const conversations = new Map<string, any>();
+  async getConversations(userId: string): Promise<{ data: ConversationItem[] }> {
+    const messages = await this.repository.findAllForUser(userId);
+    const conversations = new Map<string, ConversationItem>();
 
     for (const msg of messages) {
       const contactId = msg.senderId === userId ? msg.recipientId : msg.senderId;
-      const contact = msg.senderId === userId ? msg.recipient : msg.sender;
+      const contact = (msg.senderId === userId ? (msg as never as { recipient: ConversationItem['contact'] }).recipient : (msg as never as { sender: ConversationItem['contact'] }).sender);
 
       if (!conversations.has(contactId)) {
-        const unreadCount = await this.prisma.message.count({
-          where: { senderId: contactId, recipientId: userId, isRead: false },
-        });
+        const unreadCount = await this.repository.countUnreadFrom(contactId, userId);
         conversations.set(contactId, {
           contact,
           lastMessage: { content: msg.content, createdAt: msg.createdAt },
@@ -37,63 +29,36 @@ export class MessagesService {
     return { data: Array.from(conversations.values()) };
   }
 
-  async getMessages(userId: string, contactId: string, query: { page?: number; limit?: number }) {
-    const { page = 1, limit = 20 } = query;
-    const skip = (page - 1) * limit;
-
-    const [data, total] = await Promise.all([
-      this.prisma.message.findMany({
-        where: {
-          OR: [
-            { senderId: userId, recipientId: contactId },
-            { senderId: contactId, recipientId: userId },
-          ],
-        },
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'asc' },
-      }),
-      this.prisma.message.count({
-        where: {
-          OR: [
-            { senderId: userId, recipientId: contactId },
-            { senderId: contactId, recipientId: userId },
-          ],
-        },
-      }),
-    ]);
-
-    return { data, meta: buildPaginationMeta(total, page, limit) };
+  getMessages(
+    userId: string,
+    contactId: string,
+    query: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<Message>> {
+    return this.repository.findBetween(userId, contactId, query);
   }
 
-  async sendMessage(senderId: string, recipientId: string, content: string, attachmentUrl?: string) {
-    const recipient = await this.prisma.user.findUnique({ where: { id: recipientId } });
-    if (!recipient) throw new NotFoundException('Destinataire introuvable.');
+  async sendMessage(
+    senderId: string,
+    recipientId: string,
+    content: string,
+    attachmentUrl?: string,
+  ): Promise<Message> {
+    await this.repository.findRecipientOrThrow(recipientId);
+    const message = await this.repository.createWithSender({ senderId, recipientId, content, attachmentUrl });
+    const sender = (message as never as { sender: { firstName: string; lastName: string } }).sender;
 
-    const message = await this.prisma.message.create({
-      data: { senderId, recipientId, content, attachmentUrl },
-      include: {
-        sender: { select: { id: true, lastName: true, firstName: true, avatarUrl: true } },
-      },
-    });
-
-    await this.prisma.notification.create({
-      data: {
-        userId: recipientId,
-        type: 'new_message',
-        title: 'Nouveau message',
-        body: `Vous avez reçu un message de ${message.sender.firstName} ${message.sender.lastName}.`,
-      },
+    await this.repository.createNotification({
+      userId: recipientId,
+      type: 'new_message',
+      title: 'Nouveau message',
+      body: `Vous avez reçu un message de ${sender.firstName} ${sender.lastName}.`,
     });
 
     return message;
   }
 
-  async markAsRead(userId: string, contactId: string) {
-    await this.prisma.message.updateMany({
-      where: { senderId: contactId, recipientId: userId, isRead: false },
-      data: { isRead: true },
-    });
+  async markAsRead(userId: string, contactId: string): Promise<{ message: string }> {
+    await this.repository.markConversationRead(contactId, userId);
     return { message: 'Messages marqués comme lus.' };
   }
 }

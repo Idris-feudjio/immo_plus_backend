@@ -4,206 +4,207 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { addDays, addMonths, format, parseISO, startOfMonth } from 'date-fns';
-import { PrismaService } from '../prisma/prisma.service';
+import { addDays, addMonths, format } from 'date-fns';
+import {
+  Contract,
+  ContractStatus,
+  PaymentStatus,
+  PropertyStatus,
+  Role,
+} from '@prisma/client';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import { UnitOfWorkService } from '../database/unit-of-work.service';
 import {
   CreateContractDto,
   FilterContractsDto,
   RenewContractDto,
   TerminateContractDto,
 } from './dto/contract.dto';
-import { buildPaginationMeta } from '../common/dto/pagination.dto';
-import { ContractStatus, PaymentStatus, PropertyStatus, Role } from '@prisma/client';
+import type { IContractsService } from './interfaces/contracts-service.interface';
+import { ContractRepository } from './contract.repository';
 
 @Injectable()
-export class ContractsService {
-  constructor(private prisma: PrismaService) {}
+export class ContractsService implements IContractsService {
+  constructor(
+    private readonly repository: ContractRepository,
+    private readonly uow: UnitOfWorkService,
+  ) {}
 
-  async list(userId: string, role: string, query: FilterContractsDto) {
-    const { page = 1, limit = 20, status, propertyId, tenantId } = query;
-    const skip = (page - 1) * limit;
-
-    const where: any = {};
-    if (role === Role.TENANT) {
-      const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
-      if (tenant) where.tenantId = tenant.id;
-      else return { data: [], meta: buildPaginationMeta(0, page, limit) };
-    } else if (role !== Role.ADMIN) {
-      where.property = { ownerId: userId };
-    }
-
-    if (status) where.status = status;
-    if (propertyId) where.propertyId = propertyId;
-    if (tenantId) where.tenantId = tenantId;
-
-    const [data, total] = await Promise.all([
-      this.prisma.contract.findMany({
-        where,
-        skip,
-        take: limit,
-        include: {
-          property: { select: { id: true, title: true, images: { where: { isCover: true }, take: 1 } } },
-          tenant: { select: { id: true, lastName: true, firstName: true, email: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.contract.count({ where }),
-    ]);
-
-    return { data, meta: buildPaginationMeta(total, page, limit) };
+  list(userId: string, role: string, query: FilterContractsDto): Promise<PaginatedResult<Contract>> {
+    return this.repository.findListPaginated(userId, role, query);
   }
 
-  async create(userId: string, role: string, dto: CreateContractDto) {
-    const property = await this.prisma.property.findFirst({
-      where: { id: dto.propertyId, deletedAt: null },
-    });
+  async create(userId: string, role: string, dto: CreateContractDto): Promise<Contract> {
+    const property = await this.repository.findPropertyForContract(dto.propertyId);
     if (!property) throw new NotFoundException('Bien introuvable.');
 
     if (role !== Role.ADMIN && property.ownerId !== userId && property.managerId !== userId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }
 
-    if (!([PropertyStatus.AVAILABLE, PropertyStatus.RESERVED] as PropertyStatus[]).includes(property.status)) {
-      throw new ConflictException({ error: 'PROPERTY_NOT_AVAILABLE', message: 'Le bien n\'est pas disponible.' });
+    const availableStatuses: PropertyStatus[] = [PropertyStatus.AVAILABLE, PropertyStatus.RESERVED];
+    if (!availableStatuses.includes(property.status)) {
+      throw new ConflictException({ error: 'PROPERTY_NOT_AVAILABLE', message: "Le bien n'est pas disponible." });
     }
 
-    const existingActive = await this.prisma.contract.findFirst({
-      where: { propertyId: dto.propertyId, status: ContractStatus.ACTIVE },
+    const existingActive = await this.repository.findActiveContractForProperty(dto.propertyId);
+    if (existingActive) throw new ConflictException('Un contrat actif existe déjà pour ce bien.');
+
+    const clauseData = (dto.clauses ?? []).map((text, order) => ({ text, order }));
+    const start = new Date(dto.startDate);
+    const end = new Date(dto.endDate);
+    const fees = dto.fees ?? 0;
+
+    return this.uow.execute(async (tx) => {
+      const contract = await tx.contract.create({
+        data: {
+          propertyId: dto.propertyId,
+          tenantId: dto.tenantId,
+          startDate: start,
+          endDate: end,
+          rent: dto.rent,
+          fees,
+          deposit: dto.deposit,
+          status: ContractStatus.ACTIVE,
+          clauses: { create: clauseData },
+        },
+        include: { clauses: true },
+      });
+
+      await tx.property.update({
+        where: { id: dto.propertyId },
+        data: { status: PropertyStatus.RENTED },
+      });
+
+      await tx.payment.createMany({
+        data: this.buildPaymentSchedule(contract.id, dto.tenantId, dto.propertyId, dto.rent, fees, start, end),
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: dto.tenantId,
+          type: 'contract_created',
+          title: 'Nouveau contrat',
+          body: 'Un contrat de location a été créé pour vous.',
+        },
+      });
+
+      return contract as unknown as Contract;
     });
-    if (existingActive) {
-      throw new ConflictException('Un contrat actif existe déjà pour ce bien.');
-    }
-
-    const clauseData = (dto.clauses || []).map((text, order) => ({ text, order }));
-
-    const contract = await this.prisma.contract.create({
-      data: {
-        propertyId: dto.propertyId,
-        tenantId: dto.tenantId,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
-        rent: dto.rent,
-        fees: dto.fees ?? 0,
-        deposit: dto.deposit,
-        status: ContractStatus.ACTIVE,
-        clauses: { create: clauseData },
-      },
-      include: { clauses: true },
-    });
-
-    await this.prisma.property.update({
-      where: { id: dto.propertyId },
-      data: { status: PropertyStatus.RENTED },
-    });
-
-    await this.generatePaymentSchedule(contract.id, dto.tenantId, dto.propertyId, dto.rent, dto.fees ?? 0, new Date(dto.startDate), new Date(dto.endDate));
-
-    await this.prisma.notification.create({
-      data: {
-        userId: dto.tenantId,
-        type: 'contract_created',
-        title: 'Nouveau contrat',
-        body: 'Un contrat de location a été créé pour vous.',
-      },
-    });
-
-    return contract;
   }
 
-  async getById(id: string, userId: string, role: string) {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id },
-      include: {
-        property: { include: { images: { where: { isCover: true }, take: 1 } } },
-        tenant: true,
-        clauses: { orderBy: { order: 'asc' } },
-        payments: { orderBy: { dueDate: 'asc' } },
-      },
-    });
+  async getById(id: string, userId: string, role: string): Promise<Contract> {
+    const contract = await this.repository.findByIdWithDetails(id);
     if (!contract) throw new NotFoundException('Contrat introuvable.');
-    await this.assertAccess(contract, userId, role);
+    await this.repository.assertAccess(contract, userId, role);
     return contract;
   }
 
-  async renew(id: string, userId: string, role: string, dto: RenewContractDto) {
+  async renew(id: string, userId: string, role: string, dto: RenewContractDto): Promise<Contract> {
     const contract = await this.getById(id, userId, role);
-    if (!([ContractStatus.ACTIVE, ContractStatus.EXPIRED] as ContractStatus[]).includes(contract.status)) {
+
+    const renewableStatuses: ContractStatus[] = [ContractStatus.ACTIVE, ContractStatus.EXPIRED];
+    if (!renewableStatuses.includes((contract as never as { status: ContractStatus }).status)) {
       throw new ConflictException({ error: 'CONTRACT_NOT_RENEWABLE', message: 'Le contrat ne peut pas être renouvelé.' });
     }
 
-    const oldEndDate = new Date(contract.endDate);
+    const oldEndDate = new Date((contract as never as { endDate: Date }).endDate);
     const newStartDate = addDays(oldEndDate, 1);
+    const newRent = dto.rent ?? (contract as never as { rent: number }).rent;
+    const clauseData = (dto.clauses ?? []).map((text, order) => ({ text, order }));
 
-    await this.prisma.contract.update({ where: { id }, data: { status: ContractStatus.RENEWAL } });
+    return this.uow.execute(async (tx) => {
+      await tx.contract.update({ where: { id }, data: { status: ContractStatus.RENEWAL } });
 
-    const newRent = dto.rent ?? contract.rent;
-    const clauseData = (dto.clauses || []).map((text, order) => ({ text, order }));
+      const c = contract as never as { tenantId: string; propertyId: string; fees: number; deposit: number };
+      const newContract = await tx.contract.create({
+        data: {
+          propertyId: c.propertyId,
+          tenantId: c.tenantId,
+          startDate: newStartDate,
+          endDate: new Date(dto.endDate),
+          rent: newRent,
+          fees: c.fees,
+          deposit: c.deposit,
+          parentContractId: id,
+          status: ContractStatus.ACTIVE,
+          clauses: { create: clauseData },
+        },
+      });
 
-    const newContract = await this.prisma.contract.create({
-      data: {
-        propertyId: contract.propertyId,
-        tenantId: contract.tenantId,
-        startDate: newStartDate,
-        endDate: new Date(dto.endDate),
-        rent: newRent,
-        fees: contract.fees,
-        deposit: contract.deposit,
-        parentContractId: id,
-        status: ContractStatus.ACTIVE,
-        clauses: { create: clauseData },
-      },
+      await tx.payment.createMany({
+        data: this.buildPaymentSchedule(
+          newContract.id,
+          c.tenantId,
+          c.propertyId,
+          newRent,
+          c.fees,
+          newStartDate,
+          new Date(dto.endDate),
+        ),
+      });
+
+      return newContract as unknown as Contract;
     });
-
-    await this.generatePaymentSchedule(newContract.id, contract.tenantId, contract.propertyId, newRent, contract.fees, newStartDate, new Date(dto.endDate));
-
-    return newContract;
   }
 
-  async terminate(id: string, userId: string, role: string, dto: TerminateContractDto) {
+  async terminate(
+    id: string,
+    userId: string,
+    role: string,
+    dto: TerminateContractDto,
+  ): Promise<{ message: string }> {
     const contract = await this.getById(id, userId, role);
-
-    await this.prisma.contract.update({ where: { id }, data: { status: ContractStatus.TERMINATED } });
-
+    const c = contract as never as { propertyId: string; tenantId: string };
     const terminationDate = new Date(dto.terminationDate);
-    await this.prisma.payment.updateMany({
-      where: { contractId: id, status: PaymentStatus.PENDING, dueDate: { gt: terminationDate } },
-      data: { status: PaymentStatus.CANCELLED },
-    });
 
-    await this.prisma.property.update({
-      where: { id: contract.propertyId },
-      data: { status: PropertyStatus.AVAILABLE },
-    });
+    await this.uow.execute(async (tx) => {
+      await tx.contract.update({ where: { id }, data: { status: ContractStatus.TERMINATED } });
 
-    await this.prisma.notification.create({
-      data: {
-        userId: contract.tenantId,
-        type: 'contract_terminated',
-        title: 'Contrat résilié',
-        body: 'Votre contrat de location a été résilié.',
-      },
+      await tx.payment.updateMany({
+        where: { contractId: id, status: PaymentStatus.PENDING, dueDate: { gt: terminationDate } },
+        data: { status: PaymentStatus.CANCELLED },
+      });
+
+      await tx.property.update({
+        where: { id: c.propertyId },
+        data: { status: PropertyStatus.AVAILABLE },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: c.tenantId,
+          type: 'contract_terminated',
+          title: 'Contrat résilié',
+          body: 'Votre contrat de location a été résilié.',
+        },
+      });
     });
 
     return { message: 'Contrat résilié avec succès.' };
   }
 
-  async getPdfUrl(id: string, userId: string, role: string) {
+  async getPdfUrl(id: string, userId: string, role: string): Promise<{ pdfUrl: string }> {
     const contract = await this.getById(id, userId, role);
-    if (!contract.pdfUrl) throw new NotFoundException('PDF non disponible.');
-    return { pdfUrl: contract.pdfUrl };
+    const pdfUrl = (contract as never as { pdfUrl: string | null }).pdfUrl;
+    if (!pdfUrl) throw new NotFoundException('PDF non disponible.');
+    return { pdfUrl };
   }
 
-  async generateReceipts(id: string, userId: string, role: string, period: string) {
-    const contract = await this.getById(id, userId, role);
-    const payments = await this.prisma.payment.findMany({
-      where: { contractId: id, period, status: PaymentStatus.PAID },
-    });
-    return { generated: payments.length, message: 'Quittances générées (tâche asynchrone).' };
+  async generateReceipts(
+    id: string,
+    userId: string,
+    role: string,
+    period: string,
+  ): Promise<{ generated: number; message: string }> {
+    await this.getById(id, userId, role);
+    // TODO: trigger BullMQ job for async PDF generation
+    return { generated: 0, message: 'Quittances générées (tâche asynchrone).' };
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────────
+  // ── Private helpers ────────────────────────────────────────────────────────
 
-  private async generatePaymentSchedule(
+  private buildPaymentSchedule(
     contractId: string,
     tenantId: string,
     propertyId: string,
@@ -224,37 +225,19 @@ export class ContractsService {
     let current = startDate;
 
     while (current <= endDate) {
-      const monthLabel = format(current, 'MMMM yyyy');
       const dueDate = new Date(current.getFullYear(), current.getMonth(), 5);
-
       payments.push({
         contractId,
         tenantId,
         propertyId,
         amount: rent + fees,
-        period: monthLabel,
+        period: format(current, 'MMMM yyyy'),
         dueDate,
         status: PaymentStatus.PENDING,
       });
-
       current = addMonths(current, 1);
     }
 
-    await this.prisma.payment.createMany({ data: payments });
-  }
-
-  private async assertAccess(contract: any, userId: string, role: string) {
-    if (role === Role.ADMIN) return;
-    if (role === Role.TENANT) {
-      const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
-      if (!tenant || tenant.id !== contract.tenantId) {
-        throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-      }
-      return;
-    }
-    const property = await this.prisma.property.findUnique({ where: { id: contract.propertyId } });
-    if (!property || (property.ownerId !== userId && property.managerId !== userId)) {
-      throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-    }
+    return payments;
   }
 }

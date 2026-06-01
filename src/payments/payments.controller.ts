@@ -1,44 +1,57 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import {
   CreatePaymentDto,
   FilterPaymentsDto,
   SendRemindersDto,
   UpdatePaymentDto,
 } from './dto/payment.dto';
-import { PaymentsService } from './payments.service';
+import type { IPaymentsService } from './interfaces/payments-service.interface';
+import { PAYMENTS_SERVICE } from './interfaces/payments-service.interface';
 
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private service: PaymentsService) {}
+  constructor(@Inject(PAYMENTS_SERVICE) private readonly service: IPaymentsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Liste des paiements' })
-  list(@CurrentUser() user: any, @Query() query: FilterPaymentsDto) {
+  list(@CurrentUser() user: AuthUser, @Query() query: FilterPaymentsDto) {
     return this.service.list(user.id, user.role, query);
   }
 
   @Post()
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Enregistrer un paiement' })
-  create(@CurrentUser() user: any, @Body() dto: CreatePaymentDto) {
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreatePaymentDto) {
     return this.service.create(user.id, user.role, dto);
   }
 
   @Patch(':id')
-   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un paiement' })
-  update(@Param('id') id: string, @CurrentUser() user: any, @Body() dto: UpdatePaymentDto) {
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdatePaymentDto) {
     return this.service.update(id, user.id, user.role, dto);
   }
 
   @Get('overdue')
   @ApiOperation({ summary: 'Tableau de bord des impayés' })
-  getOverdue(@CurrentUser() user: any) {
+  getOverdue(@CurrentUser() user: AuthUser) {
     return this.service.getOverdue(user.id, user.role);
   }
 
@@ -46,22 +59,22 @@ export class PaymentsController {
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Envoyer des rappels' })
-  sendReminders(@CurrentUser() user: any, @Body() dto: SendRemindersDto) {
+  sendReminders(@CurrentUser() user: AuthUser, @Body() dto: SendRemindersDto) {
     return this.service.sendReminders(user.id, user.role, dto);
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Statistiques de paiement' })
   getStats(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthUser,
     @Query() query: { year?: number; month?: number; propertyId?: string },
   ) {
     return this.service.getStats(user.id, user.role, query);
   }
 
   @Get(':id/receipt')
-  @ApiOperation({ summary: 'Quittance d\'un paiement' })
-  getReceipt(@Param('id') id: string, @CurrentUser() user: any) {
+  @ApiOperation({ summary: "Quittance d'un paiement" })
+  getReceipt(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.service.getReceiptUrl(id, user.id, user.role);
   }
 }

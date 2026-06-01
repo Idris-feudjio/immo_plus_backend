@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Patch,
   Post,
@@ -18,31 +19,33 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { AdminUpdateUserDto, DelegationDto, UpdateProfileDto } from './dto/update-user.dto';
-import { UsersService } from './users.service';
+import type { IUsersService } from './interfaces/users-service.interface';
+import { USERS_SERVICE } from './interfaces/users-service.interface';
 
 @ApiTags('Users')
 @Controller('users')
 export class UsersController {
-  constructor(private users: UsersService) {}
+  constructor(@Inject(USERS_SERVICE) private readonly users: IUsersService) {}
 
   @Get('me')
-  @ApiOperation({ summary: 'Profil de l\'utilisateur connecté' })
-  getMe(@CurrentUser() user: any) {
+  @ApiOperation({ summary: "Profil de l'utilisateur connecté" })
+  getMe(@CurrentUser() user: AuthUser) {
     return this.users.getProfile(user.id);
   }
 
   @Patch('me')
   @ApiOperation({ summary: 'Mettre à jour le profil' })
-  updateMe(@CurrentUser() user: any, @Body() dto: UpdateProfileDto) {
+  updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto) {
     return this.users.updateProfile(user.id, dto);
   }
 
   @Post('me/avatar')
-  @ApiOperation({ summary: 'Upload de l\'avatar' })
+  @ApiOperation({ summary: "Upload de l'avatar" })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
-  uploadAvatar(@CurrentUser() user: any, @UploadedFile() _file: Express.Multer.File) {
+  uploadAvatar(@CurrentUser() user: AuthUser, @UploadedFile() _file: Express.Multer.File) {
     // TODO: upload to storage and get URL
     return this.users.updateAvatar(user.id, 'placeholder-url');
   }
@@ -55,8 +58,8 @@ export class UsersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Détail d\'un utilisateur' })
-  getOne(@Param('id') id: string, @CurrentUser() user: any) {
+  @ApiOperation({ summary: "Détail d'un utilisateur" })
+  getOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     if (user.role !== Role.ADMIN && user.id !== id) {
       return this.users.getProfile(user.id);
     }
