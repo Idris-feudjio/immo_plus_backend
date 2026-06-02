@@ -1,13 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { Role, User } from '@prisma/client';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import { AdminUpdateUserDto, DelegationDto, UpdateProfileDto } from './dto/update-user.dto';
 import type { IUsersService } from './interfaces/users-service.interface';
-import { UserRepository, UserView } from './user.repository';
+import { UserCreateData, UserRepository, UserView } from './user.repository';
 
 @Injectable()
-export class UsersService implements IUsersService {
-  constructor(private readonly repository: UserRepository) {}
+export class UsersService extends BaseService<User, UserCreateData> implements IUsersService {
+  constructor(protected override readonly repository: UserRepository) {
+    super(repository);
+  }
 
   getProfile(userId: string): Promise<UserView> {
     return this.repository.findByIdProjectedOrThrow(userId);
@@ -24,10 +27,10 @@ export class UsersService implements IUsersService {
 
   listUsers(query: {
     role?: Role;
-    search?: string;
+    searchKey?: string;
     isActive?: boolean;
-    page?: number;
-    limit?: number;
+    pageNumber?: number;
+    pageSize?: number;
   }): Promise<PaginatedResult<UserView>> {
     return this.repository.findListPaginated(query);
   }

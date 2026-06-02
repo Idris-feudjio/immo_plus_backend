@@ -8,6 +8,7 @@ import { USERS_SERVICE } from './interfaces/users-service.interface';
   controllers: [UsersController],
   providers: [
     UserRepository,
+    UsersService,
     { provide: USERS_SERVICE, useClass: UsersService },
   ],
   exports: [USERS_SERVICE, UserRepository],

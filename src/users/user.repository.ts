@@ -60,21 +60,21 @@ export class UserRepository extends BaseRepository<User, UserCreateData> {
   /** Paginated user list (admin). */
   async findListPaginated(query: {
     role?: Role;
-    search?: string;
+    searchKey?: string;
     isActive?: boolean;
-    page?: number;
-    limit?: number;
+    pageNumber?: number;
+    pageSize?: number;
   }): Promise<PaginatedResult<UserView>> {
-    const { page = 1, limit = 20, role, search, isActive } = query;
+    const { pageNumber = 0, pageSize = 20, role, searchKey, isActive } = query;
     const filters: Record<string, string[]> = {};
     if (role) filters.role = [role];
     if (isActive !== undefined) filters.isActive = [String(isActive)];
 
     const request: SearchRequest = {
-      searchKey: search,
+      searchKey,
       filters,
-      pageNumber: page - 1,
-      pageSize: limit,
+      pageNumber,
+      pageSize,
       sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }],
     };
 
@@ -82,15 +82,15 @@ export class UserRepository extends BaseRepository<User, UserCreateData> {
     const [data, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
+        skip: pageNumber * pageSize,
+        take: pageSize,
         select: USER_SELECT,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.user.count({ where }),
     ]);
 
-    return { data: data as UserView[], meta: buildMeta(total, page - 1, limit) };
+    return { data: data as UserView[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
   findManagerById(managerId: string): Promise<User | null> {

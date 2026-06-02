@@ -11,10 +11,10 @@ export interface IUsersService {
   updateAvatar(userId: string, avatarUrl: string): Promise<{ id: string; avatarUrl: string | null }>;
   listUsers(query: {
     role?: Role;
-    search?: string;
+    searchKey?: string;
     isActive?: boolean;
-    page?: number;
-    limit?: number;
+    pageNumber?: number;
+    pageSize?: number;
   }): Promise<PaginatedResult<UserView>>;
   getUserById(id: string): Promise<UserView>;
   adminUpdateUser(id: string, dto: AdminUpdateUserDto): Promise<UserView>;

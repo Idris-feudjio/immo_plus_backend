@@ -1,14 +1,25 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import type { SearchRequest, SortClause } from '../interfaces/search-request.interface';
 
-export class PaginationDto {
-  @ApiPropertyOptional({ default: 1 })
+export class SortClauseDto implements SortClause {
+  @ApiPropertyOptional()
+  @IsString()
+  fieldName!: string;
+
+  @ApiPropertyOptional({ enum: ['ASC', 'DESC'] })
+  @IsIn(['ASC', 'DESC'])
+  direction!: 'ASC' | 'DESC';
+}
+
+export class PaginationDto implements SearchRequest {
+  @ApiPropertyOptional({ default: 0, description: '0-based page index' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  page?: number = 1;
+  @Min(0)
+  pageNumber?: number = 0;
 
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
@@ -16,19 +27,24 @@ export class PaginationDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit?: number = 20;
+  pageSize?: number = 20;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  sort?: string;
-}
+  searchKey?: string;
 
-export function buildPaginationMeta(total: number, page: number, limit: number) {
-  return {
-    total,
-    pageNumber: page > 0 ? page - 1 : 0,
-    pageSize: limit,
-    totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
-  };
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'array', items: { type: 'string' } },
+  })
+  @IsOptional()
+  @IsObject()
+  filters?: Record<string, string[]>;
+
+  @ApiPropertyOptional({ type: [SortClauseDto] })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => SortClauseDto)
+  sortClauses?: SortClauseDto[];
 }
