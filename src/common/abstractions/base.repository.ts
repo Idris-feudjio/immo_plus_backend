@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
+import type { AbstractCrud } from './base.crud';
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
-import type { IRepository } from '../interfaces/repository.interface';
 import type { QueryField, SearchRequest, SortClause } from '../interfaces/search-request.interface';
 import { buildMeta } from '../utils/pagination.util';
 
@@ -24,7 +24,7 @@ export interface PrismaModelDelegate<T> {
 }
 
 export abstract class BaseRepository<T, D extends object = Record<string, unknown>>
-  implements IRepository<T, D>
+  implements AbstractCrud<T, D>
 {
   constructor(
     protected readonly delegate: PrismaModelDelegate<T>,
@@ -178,5 +178,17 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
       if (field) acc.push({ [field.prismaField]: sc.direction.toLowerCase() as 'asc' | 'desc' });
       return acc;
     }, []);
+  }
+
+  /** Count records matching the optional search request. */
+  async count(request?: SearchRequest): Promise<number> {
+    const where = this.buildSearchWhere(request ?? {});
+    return this.delegate.count({ where });
+  }
+
+  /** Return true if a record with the given id exists. */
+  async exists(id: string): Promise<boolean> {
+    const record = await this.findById(id);
+    return record !== null;
   }
 }
