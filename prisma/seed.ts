@@ -1,3 +1,5 @@
+import 'dotenv/config';
+import { PrismaPg } from '@prisma/adapter-pg';
 import {
   ContractStatus,
   MaintenanceStatus,
@@ -12,7 +14,9 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(process.env['DATABASE_URL']!),
+});
 
 const SALT = 12;
 const h = (pwd: string) => bcrypt.hash(pwd, SALT);
