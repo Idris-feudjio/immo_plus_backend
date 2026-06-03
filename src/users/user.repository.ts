@@ -43,14 +43,14 @@ export class UserRepository extends BaseRepository<User, UserCreateData> {
     );
   }
 
-  findByIdProjected(id: string): Promise<UserView | null> {
-    return this.prisma.user.findUnique({ where: { id }, select: USER_SELECT }) as Promise<UserView | null>;
+  override findById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { id }, select: USER_SELECT }) as Promise<User | null>;
   }
 
   async findByIdProjectedOrThrow(id: string): Promise<UserView> {
-    const user = await this.findByIdProjected(id);
+    const user = await this.findById(id);
     if (!user) throw new NotFoundException('Utilisateur introuvable.');
-    return user;
+    return user as unknown as UserView;
   }
 
   updateProjected(id: string, data: object): Promise<UserView> {

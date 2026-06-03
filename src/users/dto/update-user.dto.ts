@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString, Matches } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { Role } from '@prisma/client';
 
 export class UpdateProfileDto {
@@ -37,11 +37,13 @@ export class AdminUpdateUserDto {
 }
 
 export class DelegationDto {
-  @ApiPropertyOptional()
+  @ApiProperty()
   @IsString()
-  @IsOptional()
-  managerId?: string;
+  @IsNotEmpty()
+  managerId!: string;
 
-  @ApiPropertyOptional()
-  propertyIds?: string[];
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  propertyIds!: string[];
 }

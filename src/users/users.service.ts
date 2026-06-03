@@ -22,7 +22,7 @@ export class UsersService extends BaseService<User, UserCreateData> implements I
   }
 
   async updateAvatar(userId: string, avatarUrl: string): Promise<{ id: string; avatarUrl: string | null }> {
-    const user = await this.repository.updateProjected(userId, { avatarUrl } as never);
+    const user = await this.repository.updateProjected(userId, { avatarUrl });
     return { id: user.id, avatarUrl: user.avatarUrl };
   }
 
@@ -36,19 +36,19 @@ export class UsersService extends BaseService<User, UserCreateData> implements I
 
   async adminUpdateUser(id: string, dto: AdminUpdateUserDto): Promise<UserView> {
     await this.repository.findByIdProjectedOrThrow(id);
-    return this.repository.updateProjected(id, dto as never);
+    return this.repository.updateProjected(id, dto);
   }
 
   async softDeleteUser(id: string): Promise<void> {
     await this.repository.findByIdProjectedOrThrow(id);
-    await this.repository.updateProjected(id, { isActive: false } as never);
+    await this.repository.updateProjected(id, { isActive: false });
   }
 
   async delegate(ownerId: string, dto: DelegationDto): Promise<{ message: string }> {
-    const manager = await this.repository.findManagerById(dto.managerId ?? '');
+    const manager = await this.repository.findManagerById(dto.managerId);
     if (!manager) throw new NotFoundException('Gestionnaire introuvable.');
 
-    await this.repository.assignManagerToProperties(ownerId, dto.propertyIds ?? [], dto.managerId ?? '');
+    await this.repository.assignManagerToProperties(ownerId, dto.propertyIds, dto.managerId);
     return { message: 'Délégation accordée avec succès.' };
   }
 
