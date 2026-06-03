@@ -4,12 +4,10 @@ import {
   Delete,
   Get,
   HttpCode,
-  HttpException,
   HttpStatus,
   Param,
   Patch,
   Post,
-  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -57,29 +55,29 @@ export class UsersController extends BaseController<User, UserCreateData> {
 
   // ── Overrides ──────────────────────────────────────────────────────────────
 
-  @Get()
+  @Post('search')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste des utilisateurs (admin)' })
-  override findAll(@Query() query: PaginationDto & { role?: Role; isActive?: boolean }) {
-    return this.service.listUsers(query);
+  override findWithPagination(@Body() body: PaginationDto) {
+    return this.service.listUsers(body);
   }
 
-  @Get(':id')
+  @Get(':id/detail')
   @ApiOperation({ summary: "Détail d'un utilisateur" })
-  override findOne(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+  override findById(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
     if (user && user.role !== Role.ADMIN && user.id !== id) {
       return this.service.getProfile(user.id);
     }
     return this.service.getUserById(id);
   }
 
-  @Post()
+  @Post('create')
   @HttpCode(HttpStatus.METHOD_NOT_ALLOWED)
   override create(): never {
-    throw new HttpException('Method not allowed', HttpStatus.METHOD_NOT_ALLOWED);
+    throw new Error('User creation is handled by the auth module.');
   }
 
-  @Patch(':id')
+  @Patch(':id/update')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un utilisateur (admin)' })
   override update(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
@@ -90,7 +88,7 @@ export class UsersController extends BaseController<User, UserCreateData> {
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Désactiver un utilisateur (admin)' })
-  override remove(@Param('id') id: string) {
+  override delete(@Param('id') id: string) {
     return this.service.softDeleteUser(id);
   }
 

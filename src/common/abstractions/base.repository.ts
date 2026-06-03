@@ -72,8 +72,8 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
   }
 
   /** Hard-delete a record by id. */
-  async delete(id: string): Promise<T> {
-    return this.delegate.delete({ where: { id } });
+  async delete(id: string): Promise<void> {
+    await this.delegate.delete({ where: { id } });
   }
 
   /**

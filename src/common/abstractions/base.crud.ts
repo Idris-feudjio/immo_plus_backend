@@ -2,20 +2,17 @@ import type { PaginatedResult } from '../interfaces/paginated-result.interface';
 import type { SearchRequest } from '../interfaces/search-request.interface';
 
 /**
- * Unified CRUD contract for the repository layer.
- * BaseRepository implements this — BaseService and BaseController consume it
- * but do not implement it (different layer, different role).
- *
- * Uses SearchRequest as query type: PaginationDto implements it, so passing
- * a PaginationDto anywhere a SearchRequest is expected is always valid.
+ * Unified CRUD contract for the data-access and service layers.
+ * Return types use Partial<T> so projected implementations (e.g. UserView)
+ * remain assignable without an extra view-type parameter.
  */
 export interface AbstractCrud<T, D extends object = Record<string, unknown>> {
-  findById(id: string): Promise<T | null>;
-  findAll(request?: SearchRequest): Promise<T[]>;
-  findWithPagination(request: SearchRequest): Promise<PaginatedResult<T>>;
-  create(data: D): Promise<T>;
-  update(id: string, data: Partial<D>): Promise<T>;
-  delete(id: string): Promise<T>;
+  findById(id: string): Promise<Partial<T> | null>;
+  findAll(request?: SearchRequest): Promise<Partial<T>[]>;
+  findWithPagination(request: SearchRequest): Promise<PaginatedResult<Partial<T>>>;
+  create(data: D): Promise<Partial<T>>;
+  update(id: string, data: Partial<D>): Promise<Partial<T>>;
+  delete(id: string): Promise<void>;
   count(request?: SearchRequest): Promise<number>;
   exists(id: string): Promise<boolean>;
 }

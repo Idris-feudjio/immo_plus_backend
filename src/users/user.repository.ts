@@ -57,40 +57,30 @@ export class UserRepository extends BaseRepository<User, UserCreateData> {
     return this.prisma.user.update({ where: { id }, data, select: USER_SELECT }) as Promise<UserView>;
   }
 
-  /** Paginated user list (admin). */
-  async findListPaginated(query: {
-    role?: Role;
-    searchKey?: string;
-    isActive?: boolean;
-    pageNumber?: number;
-    pageSize?: number;
-  }): Promise<PaginatedResult<UserView>> {
-    const { pageNumber = 0, pageSize = 20, role, searchKey, isActive } = query;
-    const filters: Record<string, string[]> = {};
-    if (role) filters.role = [role];
-    if (isActive !== undefined) filters.isActive = [String(isActive)];
-
-    const request: SearchRequest = {
-      searchKey,
-      filters,
-      pageNumber,
-      pageSize,
-      sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }],
-    };
-
+  /**
+   * Override: always project via USER_SELECT so passwordHash is never returned,
+   * regardless of which service method triggers the query.
+   */
+  override async findWithPagination(request: SearchRequest): Promise<PaginatedResult<User>> {
+    const pageNumber = request.pageNumber ?? 0;
+    const pageSize = request.pageSize ?? 20;
     const where = this.buildSearchWhere(request);
+    const orderBy = this.buildSearchOrderBy(
+      request.sortClauses ?? [{ fieldName: 'createdAt', direction: 'DESC' }],
+    );
+
     const [data, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
         skip: pageNumber * pageSize,
         take: pageSize,
         select: USER_SELECT,
-        orderBy: { createdAt: 'desc' },
+        orderBy: orderBy.length ? orderBy : { createdAt: 'desc' },
       }),
       this.prisma.user.count({ where }),
     ]);
 
-    return { data: data as UserView[], meta: buildMeta(total, pageNumber, pageSize) };
+    return { data: data as unknown as User[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
   findManagerById(managerId: string): Promise<User | null> {
