@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
-import type { SearchRequest } from '../common/interfaces/search-request.interface';
-import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import { AdminUpdateUserDto, DelegationDto, UpdateProfileDto } from './dto/update-user.dto';
 import type { IUsersService } from './interfaces/users-service.interface';
 import { UserCreateData, UserRepository, UserView } from './user.repository';
@@ -26,10 +24,6 @@ export class UsersService extends BaseService<User, UserCreateData> implements I
     return { id: user.id, avatarUrl: user.avatarUrl };
   }
 
-  listUsers(query: SearchRequest): Promise<PaginatedResult<UserView>> {
-    return this.findWithPagination(query) as unknown as Promise<PaginatedResult<UserView>>;
-  }
-
   getUserById(id: string): Promise<UserView> {
     return this.repository.findByIdProjectedOrThrow(id);
   }
@@ -39,7 +33,7 @@ export class UsersService extends BaseService<User, UserCreateData> implements I
     return this.repository.updateProjected(id, dto);
   }
 
-  async softDeleteUser(id: string): Promise<void> {
+  override async delete(id: string): Promise<void> {
     await this.repository.findByIdProjectedOrThrow(id);
     await this.repository.updateProjected(id, { isActive: false });
   }

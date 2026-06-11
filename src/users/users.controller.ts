@@ -59,7 +59,7 @@ export class UsersController extends BaseController<User, UserCreateData> {
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste des utilisateurs (admin)' })
   override findWithPagination(@Body() body: PaginationDto) {
-    return this.service.listUsers(body);
+    return this.service.findWithPagination(body);
   }
 
   @Get(':id/detail')
@@ -89,7 +89,7 @@ export class UsersController extends BaseController<User, UserCreateData> {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Désactiver un utilisateur (admin)' })
   override delete(@Param('id') id: string) {
-    return this.service.softDeleteUser(id);
+    return this.service.delete(id);
   }
 
   // ── Domain routes ──────────────────────────────────────────────────────────
