@@ -9,6 +9,9 @@ function mockRepository() {
     findPaymentById: jest.fn(),
     findPaymentWithPropertyOrThrow: jest.fn(),
     findTenantByUserId: jest.fn(),
+    findContractWithProperty: jest.fn(),
+    findByContractAndPeriod: jest.fn(),
+    createOrUpdate: jest.fn(),
   };
 }
 
@@ -17,6 +20,28 @@ function mockStorage() {
     keyFromUrl: jest.fn((url: string) => url.replace('https://cdn.example.com/', '')),
     getSignedUrl: jest.fn((key: string, _ttl: number) => Promise.resolve(`https://signed.r2.dev/${key}?token=abc`)),
   };
+}
+
+function mockPrisma() {
+  return {
+    property: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    mandate: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    commission: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+  };
+}
+
+function mockNotifRepo() {
+  return { create: jest.fn().mockResolvedValue({}) };
+}
+
+function mockEmailQueue() {
+  return { sendEmail: jest.fn().mockResolvedValue(undefined) };
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -44,17 +69,26 @@ const PAID_NO_RECEIPT = {
 
 const TENANT_RECORD = { id: 'tenant-uuid-1', userId: 'user-tenant-1' };
 
+const CONTRACT_WITH_PROP = {
+  id: 'contract-1',
+  tenantId: 'tenant-uuid-1',
+  propertyId: 'property-1',
+  property: { ownerId: 'owner-1', managerId: null },
+};
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('PaymentsService — getReceiptUrl', () => {
   let service: PaymentsService;
   let repo: ReturnType<typeof mockRepository>;
   let storage: ReturnType<typeof mockStorage>;
+  let prisma: ReturnType<typeof mockPrisma>;
 
   beforeEach(() => {
     repo = mockRepository();
     storage = mockStorage();
-    service = new PaymentsService(repo as never, storage as never);
+    prisma = mockPrisma();
+    service = new PaymentsService(repo as never, storage as never, prisma as never, mockNotifRepo() as never, mockEmailQueue() as never);
   });
 
   describe('OWNER / ADMIN flow', () => {
@@ -163,5 +197,100 @@ describe('PaymentsService — getReceiptUrl', () => {
 
       expect(storage.getSignedUrl).toHaveBeenCalledWith(expect.any(String), 3600);
     });
+  });
+});
+
+// ─── Commission generation tests ─────────────────────────────────────────────
+
+describe('PaymentsService — generateCommissions (Story 7.7)', () => {
+  let service: PaymentsService;
+  let repo: ReturnType<typeof mockRepository>;
+  let storage: ReturnType<typeof mockStorage>;
+  let prisma: ReturnType<typeof mockPrisma>;
+
+  beforeEach(() => {
+    repo = mockRepository();
+    storage = mockStorage();
+    prisma = mockPrisma();
+    service = new PaymentsService(repo as never, storage as never, prisma as never, mockNotifRepo() as never, mockEmailQueue() as never);
+
+    // Default: new payment created
+    repo.findContractWithProperty.mockResolvedValue(CONTRACT_WITH_PROP);
+    repo.findByContractAndPeriod.mockResolvedValue(null); // isNew = true
+    repo.findPaymentWithPropertyOrThrow.mockResolvedValue(null);
+    repo.createOrUpdate.mockResolvedValue({ id: 'pay-new', status: PaymentStatus.PAID });
+  });
+
+  it('creates PERCENTAGE commission correctly for a new PAID payment', async () => {
+    prisma.mandate.findMany.mockResolvedValue([
+      {
+        id: 'mandate-1',
+        agencyId: 'agency-1',
+        commissionType: 'PERCENTAGE',
+        commissionValue: { toString: () => '10', valueOf: () => 10 },
+      },
+    ]);
+
+    await service.create('owner-1', 'OWNER', {
+      contractId: 'contract-1',
+      amount: 150000,
+      period: '2026-01',
+      dueDate: '2026-01-31',
+      status: PaymentStatus.PAID,
+    } as never);
+
+    expect(prisma.commission.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountHT: 15000, // 10% of 150000
+          mandateId: 'mandate-1',
+          agencyId: 'agency-1',
+          type: 'MANAGEMENT',
+          status: 'PENDING',
+        }),
+      }),
+    );
+  });
+
+  it('creates FIXED commission correctly for a new PAID payment', async () => {
+    prisma.mandate.findMany.mockResolvedValue([
+      {
+        id: 'mandate-2',
+        agencyId: 'agency-1',
+        commissionType: 'FIXED',
+        commissionValue: { toString: () => '25000', valueOf: () => 25000 },
+      },
+    ]);
+
+    await service.create('owner-1', 'OWNER', {
+      contractId: 'contract-1',
+      amount: 150000,
+      period: '2026-01',
+      dueDate: '2026-01-31',
+      status: PaymentStatus.PAID,
+    } as never);
+
+    expect(prisma.commission.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountHT: 25000,
+          type: 'MANAGEMENT',
+        }),
+      }),
+    );
+  });
+
+  it('does not create commission when mandate has no commissionType', async () => {
+    prisma.mandate.findMany.mockResolvedValue([]); // DB filters commissionType: { not: null }
+
+    await service.create('owner-1', 'OWNER', {
+      contractId: 'contract-1',
+      amount: 150000,
+      period: '2026-01',
+      dueDate: '2026-01-31',
+      status: PaymentStatus.PAID,
+    } as never);
+
+    expect(prisma.commission.create).not.toHaveBeenCalled();
   });
 });

@@ -125,27 +125,27 @@ development_status:
   # ─────────────────────────────────────────────────────────────────
   # EP-7: Agency & Mandate Management (Phase 2)
   # ─────────────────────────────────────────────────────────────────
-  epic-7: backlog
-  7-1-agency-crud-admin: backlog
-  7-2-agency-member-assignment: backlog
-  7-3-create-mandate-non-exclusive: backlog
-  7-4-terminate-mandate: backlog
-  7-5-list-mandates: backlog
-  7-6-agency-public-profile: backlog
-  7-7-commission-params-mandate: backlog
-  7-8-mandate-expiry-cron: backlog
+  epic-7: done
+  7-1-agency-crud-admin: done              # POST /agencies, PATCH /agencies/:id/suspend, GET /agencies — done 2026-06-13
+  7-2-agency-member-assignment: done       # POST /agencies/:id/members, DELETE /agencies/:id/members/:memberId — done 2026-06-13
+  7-3-create-mandate-non-exclusive: done   # POST /mandates with manager/agency validation + notification — done 2026-06-13
+  7-4-terminate-mandate: done              # POST /mandates/:id/terminate + notification — done 2026-06-13
+  7-5-list-mandates: done                  # GET /mandates with role-based filtering — done 2026-06-13
+  7-6-agency-public-profile: done          # GET /agencies/:id/public @Public() + Redis cache 30min — done 2026-06-13
+  7-7-commission-params-mandate: done      # Auto-commission on PAID payment in PaymentsService — done 2026-06-13
+  7-8-mandate-expiry-cron: done            # @Cron('20 0 * * *') expireMandates in CronService — done 2026-06-13
   epic-7-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────────
   # EP-8: Commission Management (Phase 2)
   # ─────────────────────────────────────────────────────────────────
-  epic-8: backlog
-  8-1-auto-commission-management: backlog
-  8-2-manual-commission-creation: backlog
-  8-3-validate-commission-paid: backlog
-  8-4-cancel-pending-commission: backlog
-  8-5-commission-reporting-dashboard: backlog
-  8-6-owner-commission-view: backlog
+  epic-8: done
+  8-1-auto-commission-management: done              # owner notify on auto-commission in PaymentsService — done 2026-06-13
+  8-2-manual-commission-creation: done              # POST /commissions MANAGER|ADMIN, TVA auto-calc, owner notified — done 2026-06-13
+  8-3-validate-commission-paid: done                # POST /commissions/:id/pay, PDF→R2, notify manager — done 2026-06-13
+  8-4-cancel-pending-commission: done               # POST /commissions/:id/cancel OWNER|ADMIN — done 2026-06-13
+  8-5-commission-reporting-dashboard: done          # GET /commissions + GET /commissions/dashboard Redis 5min — done 2026-06-13
+  8-6-owner-commission-view: done                   # GET /commissions/my-due grouped by agency — done 2026-06-13
   epic-8-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────────

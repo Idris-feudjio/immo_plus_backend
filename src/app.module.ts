@@ -29,6 +29,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AdminModule } from './admin/admin.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { AgenciesModule } from './agencies/agencies.module';
+import { CommissionsModule } from './commissions/commissions.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -71,6 +73,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AdminModule,
     ApplicationsModule,
     MaintenanceModule,
+    AgenciesModule,
+    CommissionsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

@@ -1,6 +1,9 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Payment, PaymentStatus, Role } from '@prisma/client';
+import { CommissionCategory, CommissionStatus, Payment, PaymentStatus, Role } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { NotificationRepository } from '../notifications/notification.repository';
+import { EmailQueueService } from '../notifications/email-queue.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import {
   CreatePaymentDto,
@@ -16,6 +19,9 @@ export class PaymentsService implements IPaymentsService {
   constructor(
     private readonly repository: PaymentRepository,
     private readonly storage: StorageService,
+    private readonly prisma: PrismaService,
+    private readonly notificationRepo: NotificationRepository,
+    private readonly emailQueue: EmailQueueService,
   ) {}
 
   list(userId: string, role: string, query: FilterPaymentsDto): Promise<PaginatedResult<Payment>> {
@@ -45,7 +51,9 @@ export class PaymentsService implements IPaymentsService {
 
     const existing = await this.repository.findByContractAndPeriod(dto.contractId, dto.period);
 
-    return this.repository.createOrUpdate(
+    const isNew = !existing;
+
+    const payment = await this.repository.createOrUpdate(
       existing?.id ?? null,
       {
         contractId: dto.contractId,
@@ -67,6 +75,90 @@ export class PaymentsService implements IPaymentsService {
         reference: dto.reference,
       },
     );
+
+    // Auto-generate commissions for new paid payments
+    if (isNew && dto.status === PaymentStatus.PAID) {
+      const propertyId = (contractWithProp as never as { propertyId: string }).propertyId;
+      await this.generateCommissions(propertyId, dto.amount, payment.id, (contractWithProp as never as { id: string }).id);
+    }
+
+    return payment;
+  }
+
+  private async generateCommissions(
+    propertyId: string,
+    paymentAmount: number,
+    _paymentId: string,
+    contractId: string,
+  ): Promise<void> {
+    const mandates = await this.prisma.mandate.findMany({
+      where: {
+        propertyId,
+        status: 'ACTIVE',
+        commissionType: { not: null },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        agencyId: true,
+        commissionType: true,
+        commissionValue: true,
+      },
+    });
+
+    if (mandates.length === 0) return;
+
+    const property = await this.prisma.property.findUnique({
+      where: { id: propertyId },
+      select: {
+        title: true,
+        owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+      },
+    });
+
+    for (const mandate of mandates) {
+      if (!mandate.commissionType || mandate.commissionValue === null) continue;
+
+      let amountHT: number;
+      if (mandate.commissionType === 'PERCENTAGE') {
+        amountHT = Math.round(paymentAmount * Number(mandate.commissionValue) / 100);
+      } else {
+        amountHT = Math.round(Number(mandate.commissionValue));
+      }
+
+      const tvaAmount = Math.round(amountHT * 19.25 / 100);
+      const amountTTC = amountHT + tvaAmount;
+
+      await this.prisma.commission.create({
+        data: {
+          mandateId: mandate.id,
+          contractId,
+          agencyId: mandate.agencyId,
+          type: CommissionCategory.MANAGEMENT,
+          amountHT,
+          tvaRate: 19.25,
+          tvaAmount,
+          amountTTC,
+          status: CommissionStatus.PENDING,
+        },
+      });
+
+      const owner = (property as { owner?: { id: string; email: string; firstName: string; lastName: string } } | null)?.owner;
+      if (owner) {
+        await this.notificationRepo.create({
+          userId: owner.id,
+          type: 'commission_generated',
+          title: 'Commission générée',
+          body: `Une commission de ${amountTTC} FCFA TTC a été générée pour "${property?.title}".`,
+        });
+        await this.emailQueue.sendEmail({
+          to: owner.email,
+          subject: 'Nouvelle commission de gestion',
+          template: 'commission-generated',
+          data: { ownerName: owner.firstName, amount: amountTTC, propertyTitle: property?.title ?? '' },
+        });
+      }
+    }
   }
 
   async update(id: string, userId: string, role: string, dto: UpdatePaymentDto): Promise<Payment> {

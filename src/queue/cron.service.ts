@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { addDays, endOfDay, startOfDay } from 'date-fns';
-import { ContractStatus, PaymentStatus, PropertyStatus } from '@prisma/client';
+import { ContractStatus, MandateStatus, PaymentStatus, PropertyStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
 
@@ -100,6 +100,15 @@ export class CronService {
 
       this.logger.log(`Sent ${contracts.length} expiry alerts for J-${days}.`);
     }
+  }
+
+  @Cron('20 0 * * *')
+  async expireMandates() {
+    const result = await this.prisma.mandate.updateMany({
+      where: { status: MandateStatus.ACTIVE, endDate: { lt: new Date() }, deletedAt: null },
+      data: { status: MandateStatus.EXPIRED },
+    });
+    this.logger.log(`Expired ${result.count} mandates.`);
   }
 
   @Cron('15 0 * * *')
