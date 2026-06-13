@@ -275,6 +275,10 @@ model Application {
   id         String            @id @default(uuid())
   propertyId String
   tenantId   String?
+  firstName  String            @db.VarChar(100)
+  lastName   String            @db.VarChar(100)
+  email      String            @db.VarChar(255)
+  phone      String?           @db.VarChar(20)
   message    String?
   income     Int?
   occupation String?           @db.VarChar(150)

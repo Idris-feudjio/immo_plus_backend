@@ -56,7 +56,7 @@ development_status:
   1-4-user-profile-management: done         # src/users/users.service.ts — profile CRUD
   1-5-jwt-roles-guards-global: done         # AppModule providers — JwtAuthGuard, RolesGuard
   1-6-mandate-guard: review                 # MandateGuard + MandateRepository + MandatesModule — done 2026-06-13
-  1-7-admin-user-management: backlog        # src/admin/ exists but listing/deactivate to verify
+  1-7-admin-user-management: review         # GET /admin/users + PATCH /admin/users/:id/deactivate — done 2026-06-13
   1-8-throttler-cors: done                  # ThrottlerModule in AppModule, CORS in main.ts
   epic-1-retrospective: optional
 
@@ -71,8 +71,8 @@ development_status:
   2-5-public-property-listing: done         # src/properties/ — @Public() endpoint
   2-6-dashboard-property-listing: done      # src/properties/ — role-based listing
   2-7-property-documents: done              # src/documents/documents.service.ts
-  2-8-application-submission-public: backlog # No applications module — needs creation
-  2-9-application-processing-backoffice: backlog # Depends on 2-8
+  2-8-application-submission-public: review      # POST /api/applications public — done 2026-06-13
+  2-9-application-processing-backoffice: review      # GET+PATCH /applications list/accept/reject — done 2026-06-13
   2-10-logging-interceptor: done            # LoggingInterceptor in AppModule
   epic-2-retrospective: optional
 
