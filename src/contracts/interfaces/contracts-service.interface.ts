@@ -24,7 +24,7 @@ export interface IContractsService {
     role: string,
     dto: TerminateContractDto,
   ): Promise<{ message: string }>;
-  getPdfUrl(id: string, userId: string, role: string): Promise<{ pdfUrl: string }>;
+  getPdfUrl(id: string, userId: string, role: string, force?: boolean): Promise<{ pdfUrl: string }>;
   generateReceipts(
     id: string,
     userId: string,

@@ -69,8 +69,12 @@ export class ContractsController {
 
   @Get(':id/pdf')
   @ApiOperation({ summary: 'Télécharger le PDF du contrat' })
-  getPdf(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.service.getPdfUrl(id, user.id, user.role);
+  getPdf(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Query('force') force?: string,
+  ) {
+    return this.service.getPdfUrl(id, user.id, user.role, force === 'true');
   }
 
   @Post(':id/receipts')

@@ -13,6 +13,8 @@ import {
   Role,
 } from '@prisma/client';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import { PdfService } from '../common/services/pdf.service';
+import { StorageService } from '../storage/storage.service';
 import { UnitOfWorkService } from '../database/unit-of-work.service';
 import {
   CreateContractDto,
@@ -23,11 +25,15 @@ import {
 import type { IContractsService } from './interfaces/contracts-service.interface';
 import { ContractRepository } from './contract.repository';
 
+const TVA_RATE = 19.25;
+
 @Injectable()
 export class ContractsService implements IContractsService {
   constructor(
     private readonly repository: ContractRepository,
     private readonly uow: UnitOfWorkService,
+    private readonly pdfService: PdfService,
+    private readonly storage: StorageService,
   ) {}
 
   list(userId: string, role: string, query: FilterContractsDto): Promise<PaginatedResult<Contract>> {
@@ -184,10 +190,42 @@ export class ContractsService implements IContractsService {
     return { message: 'Contrat résilié avec succès.' };
   }
 
-  async getPdfUrl(id: string, userId: string, role: string): Promise<{ pdfUrl: string }> {
+  async getPdfUrl(id: string, userId: string, role: string, force = false): Promise<{ pdfUrl: string }> {
     const contract = await this.getById(id, userId, role);
-    const pdfUrl = (contract as never as { pdfUrl: string | null }).pdfUrl;
-    if (!pdfUrl) throw new NotFoundException('PDF non disponible.');
+    const existingUrl = (contract as never as { pdfUrl: string | null }).pdfUrl;
+
+    if (existingUrl && !force) return { pdfUrl: existingUrl };
+
+    const data = await this.repository.findByIdForPdf(id);
+    if (!data) throw new NotFoundException('Contrat introuvable.');
+
+    const tvaAmount = Math.round(data.rent * TVA_RATE / 100);
+
+    const pdfBuffer = await this.pdfService.generateContractPdf({
+      contractId: id,
+      ownerFirstName: data.property.owner.firstName,
+      ownerLastName: data.property.owner.lastName,
+      tenantFirstName: data.tenant.firstName,
+      tenantLastName: data.tenant.lastName,
+      tenantIdNumber: data.tenant.nationalIdNumber,
+      propertyTitle: data.property.title,
+      propertyAddress: data.property.address,
+      propertyCity: data.property.city,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      rentHT: data.rent,
+      tvaRate: TVA_RATE,
+      tvaAmount,
+      rentTTC: data.rent + tvaAmount,
+      fees: data.fees,
+      deposit: data.deposit,
+      clauses: data.clauses.map((c) => c.text),
+    });
+
+    const key = `contracts/${id}/contract.pdf`;
+    const pdfUrl = await this.storage.uploadBuffer(key, pdfBuffer, 'application/pdf');
+    await this.repository.updatePdfUrl(id, pdfUrl);
+
     return { pdfUrl };
   }
 

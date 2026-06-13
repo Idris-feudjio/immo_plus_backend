@@ -94,7 +94,7 @@ development_status:
   4-2-list-view-contracts: done             # src/contracts/ — paginated listing
   4-3-renew-contract: done                  # src/contracts/contracts.service.ts
   4-4-terminate-contract: done              # src/contracts/contracts.service.ts
-  4-5-contract-pdf-synchronous: backlog     # Phase 3 — TODO in ContractsService (depends on 0-3)
+  4-5-contract-pdf-synchronous: review      # GET /contracts/:id/pdf with ?force — done 2026-06-13
   4-6-contract-expiry-cron: done            # src/queue/cron.service.ts — 00h05 cron
   4-7-lease-expiry-alerts: done             # src/queue/cron.service.ts — J-7/J-15/J-30
   epic-4-retrospective: optional

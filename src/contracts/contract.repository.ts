@@ -108,6 +108,35 @@ export class ContractRepository extends BaseRepository<Contract, ContractCreateD
     return this.prisma.property.findUnique({ where: { id: propertyId } });
   }
 
+  findByIdForPdf(id: string) {
+    return this.prisma.contract.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        rent: true,
+        fees: true,
+        deposit: true,
+        startDate: true,
+        endDate: true,
+        pdfUrl: true,
+        property: {
+          select: {
+            title: true,
+            address: true,
+            city: true,
+            owner: { select: { firstName: true, lastName: true } },
+          },
+        },
+        tenant: { select: { firstName: true, lastName: true, nationalIdNumber: true } },
+        clauses: { select: { text: true }, orderBy: { order: 'asc' } },
+      },
+    });
+  }
+
+  updatePdfUrl(id: string, pdfUrl: string): Promise<Contract> {
+    return this.prisma.contract.update({ where: { id }, data: { pdfUrl } });
+  }
+
   /** Verify access and return the contract, throws if no access. */
   async assertAccess(contract: Contract, userId: string, role: string): Promise<void> {
     if (role === Role.ADMIN) return;
