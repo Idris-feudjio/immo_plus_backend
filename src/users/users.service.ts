@@ -41,7 +41,6 @@ export class UsersService extends BaseService<User, UserCreateData> implements I
   async delegate(ownerId: string, dto: DelegationDto): Promise<{ message: string }> {
     const manager = await this.repository.findManagerById(dto.managerId);
     if (!manager) throw new NotFoundException('Gestionnaire introuvable.');
-
     await this.repository.assignManagerToProperties(ownerId, dto.propertyIds, dto.managerId);
     return { message: 'Délégation accordée avec succès.' };
   }

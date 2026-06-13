@@ -104,11 +104,31 @@ export class CronService {
 
   @Cron('20 0 * * *')
   async expireMandates() {
-    const result = await this.prisma.mandate.updateMany({
+    const toExpire = await this.prisma.mandate.findMany({
       where: { status: MandateStatus.ACTIVE, endDate: { lt: new Date() }, deletedAt: null },
+      select: { id: true, propertyId: true, managerId: true },
+    });
+
+    if (toExpire.length === 0) {
+      this.logger.log('Expired 0 mandates.');
+      return;
+    }
+
+    await this.prisma.mandate.updateMany({
+      where: { id: { in: toExpire.map((m) => m.id) } },
       data: { status: MandateStatus.EXPIRED },
     });
-    this.logger.log(`Expired ${result.count} mandates.`);
+
+    await Promise.all(
+      toExpire.map((m) =>
+        this.prisma.property.updateMany({
+          where: { id: m.propertyId, managerId: m.managerId },
+          data: { managerId: null },
+        }),
+      ),
+    );
+
+    this.logger.log(`Expired ${toExpire.length} mandates.`);
   }
 
   @Cron('15 0 * * *')

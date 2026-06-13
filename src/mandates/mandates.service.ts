@@ -56,6 +56,12 @@ export class MandatesService implements IMandateService {
       description: dto.description,
     });
 
+    // Sync Property.managerId so contract/payment guards recognize the manager
+    await this.prisma.property.update({
+      where: { id: dto.propertyId },
+      data: { managerId: dto.managerId },
+    });
+
     // Notify manager
     await this.notificationRepo.create({
       userId: dto.managerId,
@@ -87,6 +93,12 @@ export class MandatesService implements IMandateService {
     }
 
     const updated = await this.repository.updateStatus(id, MandateStatus.TERMINATED);
+
+    // Clear Property.managerId only if it still points to this mandate's manager
+    await this.prisma.property.updateMany({
+      where: { id: mandate.propertyId, managerId: mandate.managerId },
+      data: { managerId: null },
+    });
 
     // Notify manager
     await this.notificationRepo.create({

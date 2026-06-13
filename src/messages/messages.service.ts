@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { Message } from '@prisma/client';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { ConversationItem, IMessagesService } from './interfaces/message-service.interface';
-import { MessageRepository } from './message.repository';
+import { MessageCreateData, MessageRepository } from './message.repository';
 
 @Injectable()
-export class MessagesService implements IMessagesService {
-  constructor(private readonly repository: MessageRepository) {}
+export class MessagesService
+  extends BaseService<Message, MessageCreateData>
+  implements IMessagesService
+{
+  constructor(protected override readonly repository: MessageRepository) {
+    super(repository);
+  }
 
   async getConversations(userId: string): Promise<{ data: ConversationItem[] }> {
     const messages = await this.repository.findAllForUser(userId);
@@ -14,7 +20,11 @@ export class MessagesService implements IMessagesService {
 
     for (const msg of messages) {
       const contactId = msg.senderId === userId ? msg.recipientId : msg.senderId;
-      const contact = (msg.senderId === userId ? (msg as never as { recipient: ConversationItem['contact'] }).recipient : (msg as never as { sender: ConversationItem['contact'] }).sender);
+      const contact = (
+        msg.senderId === userId
+          ? (msg as never as { recipient: ConversationItem['contact'] }).recipient
+          : (msg as never as { sender: ConversationItem['contact'] }).sender
+      );
 
       if (!conversations.has(contactId)) {
         const unreadCount = await this.repository.countUnreadFrom(contactId, userId);

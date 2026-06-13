@@ -42,6 +42,11 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
+    const allowedRoles = ['OWNER', 'TENANT'] as const;
+    if (!allowedRoles.includes(dto.role as typeof allowedRoles[number])) {
+      throw new BadRequestException('Rôle non autorisé à l\'inscription.');
+    }
+
     const user = await this.prisma.user.create({
       data: {
         firstName: dto.firstName,
@@ -49,7 +54,7 @@ export class AuthService {
         email: dto.email,
         phone: dto.phone,
         passwordHash,
-        role: dto.role as any,
+        role: dto.role,
       },
     });
 

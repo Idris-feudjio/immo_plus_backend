@@ -23,6 +23,8 @@ function mockPrisma() {
   return {
     property: {
       findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     agencyMember: {
       findFirst: jest.fn(),
@@ -128,6 +130,15 @@ describe('MandatesService', () => {
       await expect(service.create('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(ConflictException);
     });
 
+    it('syncs Property.managerId after mandate creation', async () => {
+      await service.create('owner-1', Role.OWNER, CREATE_DTO);
+
+      expect(prisma.property.update).toHaveBeenCalledWith({
+        where: { id: 'property-1' },
+        data: { managerId: 'manager-1' },
+      });
+    });
+
     it('sends in-app notification to manager after creation', async () => {
       await service.create('owner-1', Role.OWNER, CREATE_DTO);
 
@@ -182,6 +193,15 @@ describe('MandatesService', () => {
       repository.findById.mockResolvedValue({ ...MANDATE_STUB, status: MandateStatus.EXPIRED });
 
       await expect(service.terminate('mandate-1', 'owner-1', Role.OWNER, {})).rejects.toThrow(ConflictException);
+    });
+
+    it('clears Property.managerId after termination when it matches', async () => {
+      await service.terminate('mandate-1', 'owner-1', Role.OWNER, {});
+
+      expect(prisma.property.updateMany).toHaveBeenCalledWith({
+        where: { id: 'property-1', managerId: 'manager-1' },
+        data: { managerId: null },
+      });
     });
 
     it('sends in-app notification to manager after termination', async () => {

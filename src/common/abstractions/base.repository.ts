@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
-import type { AbstractCrud } from './base.crud';
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
+import type { IRepository } from '../interfaces/repository.interface';
 import type { QueryField, SearchRequest, SortClause } from '../interfaces/search-request.interface';
 import { buildMeta } from '../utils/pagination.util';
 
@@ -24,7 +24,7 @@ export interface PrismaModelDelegate<T> {
 }
 
 export abstract class BaseRepository<T, D extends object = Record<string, unknown>>
-  implements AbstractCrud<T, D>
+  implements IRepository<T, D>
 {
   constructor(
     protected readonly delegate: PrismaModelDelegate<T>,

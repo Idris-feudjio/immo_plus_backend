@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(git -C \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\" rev-parse HEAD)"
+      "PowerShell(git -C \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\" rev-parse HEAD)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell(npx jest --no-coverage --passWithNoTests 2>&1)",
+      "PowerShell(npx jest --no-coverage 2>&1)"
     ]
   }
 }

@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { Notification, NotificationPreference, PaymentAlertConfig } from '@prisma/client';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { INotificationsService } from './interfaces/notification-service.interface';
-import { NotificationRepository } from './notification.repository';
+import { NotificationCreateData, NotificationRepository } from './notification.repository';
 
 @Injectable()
-export class NotificationsService implements INotificationsService {
-  constructor(private readonly repository: NotificationRepository) {}
+export class NotificationsService
+  extends BaseService<Notification, NotificationCreateData>
+  implements INotificationsService
+{
+  constructor(protected override readonly repository: NotificationRepository) {
+    super(repository);
+  }
 
   list(
     userId: string,
@@ -45,15 +51,5 @@ export class NotificationsService implements INotificationsService {
     config: Record<string, unknown>,
   ): Promise<PaymentAlertConfig> {
     return this.repository.upsertPaymentAlerts(userId, config);
-  }
-
-  create(data: {
-    userId: string;
-    type: string;
-    title: string;
-    body: string;
-    link?: string;
-  }): Promise<Notification> {
-    return this.repository.create(data);
   }
 }

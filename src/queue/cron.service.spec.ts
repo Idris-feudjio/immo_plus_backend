@@ -6,10 +6,13 @@ function mockPrisma() {
   return {
     payment: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findMany: jest.fn().mockResolvedValue([]) },
     contract: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
-    property: { update: jest.fn() },
+    property: { update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     notification: { create: jest.fn().mockResolvedValue({}), createMany: jest.fn(), count: jest.fn().mockResolvedValue(0) },
     paymentAlertConfig: { findMany: jest.fn().mockResolvedValue([]) },
-    mandate: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    mandate: {
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 }
 
@@ -177,36 +180,49 @@ describe('CronService — expireMandates', () => {
     service = new CronService(prisma as never, emailQueue as never);
   });
 
-  it('updates all ACTIVE mandates with past endDate to EXPIRED', async () => {
-    prisma.mandate.updateMany.mockResolvedValue({ count: 3 });
+  it('finds ACTIVE mandates with past endDate and expires them', async () => {
+    const stubs = [{ id: 'm-1', propertyId: 'p-1', managerId: 'mgr-1' }];
+    prisma.mandate.findMany.mockResolvedValue(stubs);
 
     await service.expireMandates();
 
-    expect(prisma.mandate.updateMany).toHaveBeenCalledWith(
+    expect(prisma.mandate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          status: 'ACTIVE',
-          endDate: { lt: expect.any(Date) },
-          deletedAt: null,
-        }),
-        data: { status: 'EXPIRED' },
+        where: expect.objectContaining({ status: 'ACTIVE', deletedAt: null }),
       }),
     );
+    expect(prisma.mandate.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['m-1'] } },
+      data: { status: 'EXPIRED' },
+    });
   });
 
-  it('logs the count of expired mandates', async () => {
-    prisma.mandate.updateMany.mockResolvedValue({ count: 5 });
+  it('clears Property.managerId for each expired mandate', async () => {
+    const stubs = [
+      { id: 'm-1', propertyId: 'p-1', managerId: 'mgr-1' },
+      { id: 'm-2', propertyId: 'p-2', managerId: 'mgr-2' },
+    ];
+    prisma.mandate.findMany.mockResolvedValue(stubs);
+
+    await service.expireMandates();
+
+    expect(prisma.property.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p-1', managerId: 'mgr-1' },
+      data: { managerId: null },
+    });
+    expect(prisma.property.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p-2', managerId: 'mgr-2' },
+      data: { managerId: null },
+    });
+  });
+
+  it('logs the count and does not call updateMany when no mandates to expire', async () => {
+    prisma.mandate.findMany.mockResolvedValue([]);
     const logSpy = jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
 
     await service.expireMandates();
 
-    expect(logSpy).toHaveBeenCalledWith('Expired 5 mandates.');
-  });
-
-  it('does nothing when no mandates are expired (count = 0)', async () => {
-    prisma.mandate.updateMany.mockResolvedValue({ count: 0 });
-
-    await expect(service.expireMandates()).resolves.not.toThrow();
-    expect(prisma.mandate.updateMany).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith('Expired 0 mandates.');
+    expect(prisma.mandate.updateMany).not.toHaveBeenCalled();
   });
 });
