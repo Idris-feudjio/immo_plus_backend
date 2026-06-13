@@ -28,6 +28,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AdminModule } from './admin/admin.module';
 import { ApplicationsModule } from './applications/applications.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -69,6 +70,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     DashboardModule,
     AdminModule,
     ApplicationsModule,
+    MaintenanceModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

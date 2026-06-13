@@ -114,12 +114,12 @@ development_status:
   # ─────────────────────────────────────────────────────────────────
   # EP-6: Maintenance Management (Phase 1 — MISSING MODULE)
   # ─────────────────────────────────────────────────────────────────
-  epic-6: backlog
-  6-1-create-maintenance-request: backlog   # src/maintenance/ does NOT exist — full module to create
-  6-2-maintenance-status-progression: backlog
-  6-3-maintenance-listing-filters: backlog
-  6-4-tenant-maintenance-view: backlog
-  6-5-maintenance-photo-upload: backlog
+  epic-6: in-progress
+  6-1-create-maintenance-request: review        # POST /maintenance + notify owner — done 2026-06-13
+  6-2-maintenance-status-progression: review    # PATCH /maintenance/:id/status + transitions — done 2026-06-13
+  6-3-maintenance-listing-filters: review       # GET /maintenance OWNER/MANAGER/ADMIN — done 2026-06-13
+  6-4-tenant-maintenance-view: review           # GET /maintenance/my-requests TENANT — done 2026-06-13
+  6-5-maintenance-photo-upload: review          # POST /maintenance/:id/photos R2 upload — done 2026-06-13
   epic-6-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────────
