@@ -105,9 +105,9 @@ development_status:
   epic-5: in-progress
   5-1-register-payment-paid: done           # src/payments/payments.service.ts — register PAID
   5-2-late-payments-cron: done              # src/queue/cron.service.ts — 00h01 cron
-  5-3-configurable-payment-alerts: backlog  # Phase 3 — PaymentAlertConfig exists, email not wired
+  5-3-configurable-payment-alerts: review      # cron 00:15 — pre/late alerts + suppression — done 2026-06-13
   5-4-payment-history-reporting: done       # src/payments/ — history listing
-  5-5-receipt-pdf-download: backlog         # Needs PdfService (depends on 0-3)
+  5-5-receipt-pdf-download: review          # GET /payments/:id/receipt pre-signed URL + TENANT auth — done 2026-06-13
   5-6-tenant-payments-selfservice: backlog  # /tenants/me/payments — needs verification
   epic-5-retrospective: optional
 

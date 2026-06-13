@@ -176,6 +176,10 @@ export class PaymentRepository extends BaseRepository<Payment, PaymentCreateData
     return this.prisma.payment.findUnique({ where: { id } });
   }
 
+  findTenantByUserId(userId: string) {
+    return this.prisma.tenant.findFirst({ where: { userId } });
+  }
+
   // ── Private helpers ──────────────────────────────────────────────────────
 
   async buildOwnerWhere(

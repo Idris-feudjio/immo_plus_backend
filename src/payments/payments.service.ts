@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Payment, PaymentStatus } from '@prisma/client';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Payment, PaymentStatus, Role } from '@prisma/client';
+import { StorageService } from '../storage/storage.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import {
   CreatePaymentDto,
@@ -12,7 +13,10 @@ import { PaymentRepository } from './payment.repository';
 
 @Injectable()
 export class PaymentsService implements IPaymentsService {
-  constructor(private readonly repository: PaymentRepository) {}
+  constructor(
+    private readonly repository: PaymentRepository,
+    private readonly storage: StorageService,
+  ) {}
 
   list(userId: string, role: string, query: FilterPaymentsDto): Promise<PaginatedResult<Payment>> {
     return this.repository.findListPaginated(userId, role, query);
@@ -108,9 +112,25 @@ export class PaymentsService implements IPaymentsService {
   }
 
   async getReceiptUrl(id: string, userId: string, role: string): Promise<{ receiptUrl: string }> {
+    if (role === Role.TENANT) {
+      const payment = await this.repository.findPaymentById(id);
+      if (!payment) throw new NotFoundException('Paiement introuvable.');
+      const tenant = await this.repository.findTenantByUserId(userId);
+      if (!tenant || payment.tenantId !== tenant.id) {
+        throw new ForbiddenException('Droits insuffisants.');
+      }
+      if (payment.status !== PaymentStatus.PAID) throw new ConflictException('PAYMENT_NOT_PAID');
+      if (!payment.receiptUrl) throw new NotFoundException('Quittance non disponible.');
+      const key = this.storage.keyFromUrl(payment.receiptUrl);
+      return { receiptUrl: await this.storage.getSignedUrl(key, 3600) };
+    }
+
     await this.repository.findPaymentWithPropertyOrThrow(id, userId, role);
     const payment = await this.repository.findPaymentById(id);
-    if (!payment?.receiptUrl) throw new NotFoundException('Quittance non disponible.');
-    return { receiptUrl: payment.receiptUrl };
+    if (!payment) throw new NotFoundException('Paiement introuvable.');
+    if (payment.status !== PaymentStatus.PAID) throw new ConflictException('PAYMENT_NOT_PAID');
+    if (!payment.receiptUrl) throw new NotFoundException('Quittance non disponible.');
+    const key = this.storage.keyFromUrl(payment.receiptUrl);
+    return { receiptUrl: await this.storage.getSignedUrl(key, 3600) };
   }
 }
