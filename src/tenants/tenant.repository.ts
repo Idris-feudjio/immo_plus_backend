@@ -88,6 +88,31 @@ export class TenantRepository extends BaseRepository<Tenant, TenantCreateData> {
     }) as Promise<Tenant | null>;
   }
 
+  findByUserId(userId: string) {
+    return this.prisma.tenant.findFirst({ where: { userId } });
+  }
+
+  findPaymentsForTenant(tenantId: string) {
+    return this.prisma.payment.findMany({
+      where: {
+        tenantId,
+        contract: { status: ContractStatus.ACTIVE },
+      },
+      select: {
+        id: true,
+        status: true,
+        amount: true,
+        dueDate: true,
+        period: true,
+        receiptUrl: true,
+        paymentDate: true,
+        paymentMethod: true,
+        property: { select: { id: true, title: true } },
+      },
+      orderBy: { dueDate: 'desc' },
+    });
+  }
+
   findUserByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email } });
   }

@@ -45,6 +45,13 @@ export class TenantsController {
     return this.service.create(user.id, dto);
   }
 
+  @Get('me/payments')
+  @Roles(Role.TENANT)
+  @ApiOperation({ summary: 'Mes paiements (locataire)' })
+  getMyPayments(@CurrentUser() user: AuthUser) {
+    return this.service.getMyPayments(user.id);
+  }
+
   @Get(':id')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: "Détail d'un locataire" })

@@ -25,4 +25,5 @@ export interface ITenantsService {
     applicationId: string,
     dto: UpdateApplicationDto,
   ): Promise<Application>;
+  getMyPayments(userId: string): Promise<{ data: unknown[] }>;
 }

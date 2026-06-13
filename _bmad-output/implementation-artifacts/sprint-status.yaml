@@ -108,7 +108,7 @@ development_status:
   5-3-configurable-payment-alerts: review      # cron 00:15 — pre/late alerts + suppression — done 2026-06-13
   5-4-payment-history-reporting: done       # src/payments/ — history listing
   5-5-receipt-pdf-download: review          # GET /payments/:id/receipt pre-signed URL + TENANT auth — done 2026-06-13
-  5-6-tenant-payments-selfservice: backlog  # /tenants/me/payments — needs verification
+  5-6-tenant-payments-selfservice: review       # GET /tenants/me/payments TENANT self-service — done 2026-06-13
   epic-5-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────────

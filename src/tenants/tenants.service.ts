@@ -80,4 +80,11 @@ export class TenantsService implements ITenantsService {
     await this.repository.findApplicationByIdOrThrow(applicationId, propertyId);
     return this.repository.updateApplicationStatus(applicationId, dto.status);
   }
+
+  async getMyPayments(userId: string): Promise<{ data: unknown[] }> {
+    const tenant = await this.repository.findByUserId(userId);
+    if (!tenant) throw new NotFoundException('Locataire introuvable.');
+    const data = await this.repository.findPaymentsForTenant(tenant.id);
+    return { data };
+  }
 }
