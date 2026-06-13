@@ -14,6 +14,7 @@ import { RedisCacheModule } from './cache/cache.module';
 import { StorageModule } from './storage/storage.module';
 import { CronModule } from './queue/cron.module';
 import { QueueModule } from './queue/queue.module';
+import { MandatesModule } from './mandates/mandates.module';
 
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -53,6 +54,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     StorageModule,
     CronModule,
     QueueModule,
+    MandatesModule,
 
     AuthModule,
     UsersModule,
