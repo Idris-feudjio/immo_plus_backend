@@ -10,12 +10,14 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResendOtpDto } from './dto/resend-otp.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto, ChangePasswordDto } from './dto/reset-password.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -24,7 +26,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @ApiOperation({ summary: 'Inscription' })
+  @ApiOperation({ summary: 'Inscription (OWNER ou TENANT uniquement)' })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
@@ -41,8 +43,8 @@ export class AuthController {
   @Post('resend-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renvoyer OTP' })
-  resendOtp(@Body() body: { userId: string }) {
-    return this.auth.resendOtp(body.userId);
+  resendOtp(@Body() dto: ResendOtpDto) {
+    return this.auth.resendOtp(dto.userId);
   }
 
   @Public()
@@ -64,7 +66,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Déconnexion' })
-  logout(@CurrentUser() user: any, @Body() dto: RefreshTokenDto) {
+  logout(@CurrentUser() user: AuthUser, @Body() dto: RefreshTokenDto) {
     return this.auth.logout(user.id, dto.refreshToken);
   }
 
@@ -87,7 +89,7 @@ export class AuthController {
   @Patch('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Changer le mot de passe' })
-  changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+  changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
     return this.auth.changePassword(user.id, dto);
   }
 }

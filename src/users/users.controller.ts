@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -17,6 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
@@ -66,14 +68,15 @@ export class UsersController {
   }
 
   @Get(':id/detail')
-  @ApiOperation({ summary: "Détail d'un utilisateur" })
-  findById(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
-    if (user && user.role !== Role.ADMIN && user.id !== id) {
-      return this.service.getProfile(user.id);
+  @ApiOperation({ summary: "Détail d'un utilisateur — ADMIN voit tous, les autres uniquement leur propre profil" })
+  findById(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    if (user.role !== Role.ADMIN && user.id !== id) {
+      throw new ForbiddenException('INSUFFICIENT_PERMISSIONS');
     }
     return this.service.getUserById(id);
   }
 
+  @Public()
   @Post('create')
   @HttpCode(HttpStatus.METHOD_NOT_ALLOWED)
   create(): never {
@@ -82,7 +85,7 @@ export class UsersController {
 
   @Patch(':id/update')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Modifier un utilisateur (admin)' })
+  @ApiOperation({ summary: 'Modifier le rôle ou le statut d\'un utilisateur (admin)' })
   update(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
     return this.service.adminUpdateUser(id, dto);
   }
@@ -99,7 +102,7 @@ export class UsersController {
 
   @Post(':ownerId/delegations')
   @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Déléguer des biens à un gestionnaire' })
+  @ApiOperation({ summary: 'Déléguer des biens à un gestionnaire (sans mandat agence)' })
   delegate(@Param('ownerId') ownerId: string, @Body() dto: DelegationDto) {
     return this.service.delegate(ownerId, dto);
   }
@@ -107,7 +110,7 @@ export class UsersController {
   @Delete(':ownerId/delegations/:managerId')
   @Roles(Role.OWNER)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Révoquer une délégation' })
+  @ApiOperation({ summary: 'Révoquer une délégation directe' })
   revokeDelegate(@Param('ownerId') ownerId: string, @Param('managerId') managerId: string) {
     return this.service.revokeDelegate(ownerId, managerId);
   }

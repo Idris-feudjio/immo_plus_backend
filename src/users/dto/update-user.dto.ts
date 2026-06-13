@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { Role } from '@prisma/client';
 
 export class UpdateProfileDto {
@@ -17,18 +17,13 @@ export class UpdateProfileDto {
   @IsOptional()
   @Matches(/^\+237[0-9]{8,9}$/, { message: 'Numéro invalide.' })
   phone?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  avatarUrl?: string;
 }
 
 export class AdminUpdateUserDto {
-  @ApiPropertyOptional({ enum: Role })
+  @ApiPropertyOptional({ enum: ['OWNER', 'TENANT', 'MANAGER'], description: 'Le rôle ADMIN ne peut pas être assigné via cette route' })
   @IsOptional()
-  @IsEnum(Role)
-  role?: Role;
+  @IsEnum(['OWNER', 'TENANT', 'MANAGER'])
+  role?: Exclude<Role, Role.ADMIN>;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -42,8 +37,9 @@ export class DelegationDto {
   @IsNotEmpty()
   managerId!: string;
 
-  @ApiProperty({ type: [String] })
+  @ApiProperty({ type: [String], minItems: 1 })
   @IsArray()
+  @ArrayMinSize(1)
   @IsString({ each: true })
   propertyIds!: string[];
 }

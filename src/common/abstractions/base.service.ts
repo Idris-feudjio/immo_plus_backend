@@ -1,8 +1,11 @@
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
+import type { IService } from '../interfaces/service.interface';
 import type { SearchRequest } from '../interfaces/search-request.interface';
 import { BaseRepository } from './base.repository';
 
-export abstract class BaseService<T, D extends object = Record<string, unknown>> {
+export abstract class BaseService<T, D extends object = Record<string, unknown>>
+  implements IService<T, D>
+{
   constructor(protected readonly repository: BaseRepository<T, D>) {}
 
   findById(id: string): Promise<T | null> {
