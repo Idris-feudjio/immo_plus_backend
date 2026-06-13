@@ -80,6 +80,39 @@ enum NotificationChannel {
   BOTH
 }
 
+enum AgencyStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AgencyMemberRole {
+  MEMBER
+  ADMIN
+}
+
+enum MandateStatus {
+  ACTIVE
+  TERMINATED
+  EXPIRED
+}
+
+enum CommissionType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CommissionCategory {
+  PLACEMENT
+  MANAGEMENT
+  EXCEPTIONAL
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -107,6 +140,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   notificationPrefs   NotificationPreference?
   paymentAlertConfig  PaymentAlertConfig?
+  agencyMembership    AgencyMember?
+  managedMandates     Mandate[]              @relation("MandateManager")
 
   @@map("users")
 }
@@ -183,6 +218,7 @@ model Property {
   payments            Payment[]
   applications        Application[]
   maintenanceRequests MaintenanceRequest[]
+  mandates            Mandate[]
 
   @@map("properties")
 }
@@ -272,6 +308,7 @@ model Contract {
   renewals       Contract[]       @relation("ContractRenewal")
   clauses        ContractClause[]
   payments       Payment[]
+  commissions    Commission[]
 
   @@map("contracts")
 }
@@ -411,4 +448,91 @@ model ReportJob {
   updatedAt DateTime @updatedAt
 
   @@map("report_jobs")
+}
+
+// ─── Phase 2: Agency / Mandate / Commission ───────────────────────────────────
+
+model Agency {
+  id        String       @id @default(uuid())
+  name      String       @db.VarChar(255)
+  email     String       @unique @db.VarChar(255)
+  phone     String       @db.VarChar(20)
+  address   String?
+  rccm      String?      @db.VarChar(100)
+  status    AgencyStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  members     AgencyMember[]
+  mandates    Mandate[]
+  commissions Commission[]
+
+  @@map("agencies")
+}
+
+model AgencyMember {
+  id       String           @id @default(uuid())
+  agencyId String
+  userId   String           @unique
+  role     AgencyMemberRole @default(MEMBER)
+  joinedAt DateTime         @default(now())
+
+  agency Agency @relation(fields: [agencyId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("agency_members")
+}
+
+model Mandate {
+  id              String          @id @default(uuid())
+  propertyId      String
+  agencyId        String
+  managerId       String
+  status          MandateStatus   @default(ACTIVE)
+  startDate       DateTime        @db.Date
+  endDate         DateTime?       @db.Date
+  commissionType  CommissionType?
+  commissionValue Decimal?        @db.Decimal(10, 2)
+  description     String?
+  deletedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  property    Property     @relation(fields: [propertyId], references: [id])
+  agency      Agency       @relation(fields: [agencyId], references: [id])
+  manager     User         @relation("MandateManager", fields: [managerId], references: [id])
+  commissions Commission[]
+
+  @@index([propertyId, status])
+  @@index([agencyId, status])
+  @@index([managerId, status])
+  @@map("mandates")
+}
+
+model Commission {
+  id            String             @id @default(uuid())
+  mandateId     String?
+  contractId    String
+  agencyId      String
+  type          CommissionCategory
+  amountHT      Int
+  tvaRate       Decimal            @default(19.25) @db.Decimal(5, 2)
+  tvaAmount     Int
+  amountTTC     Int
+  description   String?
+  status        CommissionStatus   @default(PENDING)
+  paymentMethod PaymentMethod?
+  reference     String?            @db.VarChar(100)
+  receiptUrl    String?
+  paidAt        DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  mandate  Mandate?  @relation(fields: [mandateId], references: [id])
+  contract Contract  @relation(fields: [contractId], references: [id])
+  agency   Agency    @relation(fields: [agencyId], references: [id])
+
+  @@index([agencyId, status])
+  @@index([contractId])
+  @@map("commissions")
 }

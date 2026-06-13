@@ -43,7 +43,7 @@ development_status:
   0-4-transform-interceptor-filters: done   # TransformInterceptor + GlobalExceptionFilter in AppModule
   0-5-bullmq-email-worker: review           # BullMQ notifications queue + EmailQueueService — done 2026-06-13
   0-6-redis-cache-service: done             # src/cache/cache.service.ts — fully implemented
-  0-7-prisma-migrations-phase2: backlog     # Agency/AgencyMember/Mandate/Commission — Phase 2 prerequisite
+  0-7-prisma-migrations-phase2: review      # Agency/Mandate/Commission schema migrated 2026-06-13
   epic-0-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────────
