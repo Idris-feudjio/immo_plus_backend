@@ -151,10 +151,10 @@ development_status:
   # ─────────────────────────────────────────────────────────────────
   # EP-9: Dashboard & Analytics (Phase 3)
   # ─────────────────────────────────────────────────────────────────
-  epic-9: backlog
-  9-1-portfolio-kpis-owner-manager: backlog
-  9-2-maintenance-kpis: backlog
-  9-3-commission-kpis-agency: backlog
-  9-4-admin-platform-kpis: backlog
-  9-5-tenant-dashboard: backlog
+  epic-9: done
+  9-1-portfolio-kpis-owner-manager: done    # GET /dashboard/portfolio — occupancy, revenus, late, expirants — cached TTL 5min — done 2026-06-13
+  9-2-maintenance-kpis: done                # GET /dashboard/maintenance — by urgency, avg resolution time, CRITICAL — done 2026-06-13
+  9-3-commission-kpis-agency: done          # GET /dashboard/commissions — monthly, pending, top 5 owners, byType — cached — done 2026-06-13
+  9-4-admin-platform-kpis: done             # GET /dashboard/admin — users, properties, contracts, late, revenue, top agencies — done 2026-06-13
+  9-5-tenant-dashboard: done                # GET /dashboard/tenant — contract, next payment, last 3 payments, maintenance counts — done 2026-06-13
   epic-9-retrospective: optional

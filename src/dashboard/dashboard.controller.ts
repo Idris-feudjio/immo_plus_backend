@@ -20,6 +20,34 @@ export class DashboardController {
     @Inject(PROPERTY_SERVICE) private readonly properties: IPropertyService,
   ) {}
 
+  @Get('portfolio')
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: 'KPIs de portefeuille — occupancy, revenus, paiements LATE, contrats expirants (Story 9.1)' })
+  getPortfolioKPIs(@CurrentUser() user: AuthUser) {
+    return this.service.getPortfolioKPIs(user.id, user.role);
+  }
+
+  @Get('maintenance')
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: 'KPIs maintenances — open par urgence, délai moyen de résolution (Story 9.2)' })
+  getMaintenanceKPIs(@CurrentUser() user: AuthUser) {
+    return this.service.getMaintenanceKPIs(user.id, user.role);
+  }
+
+  @Get('commissions')
+  @Roles(Role.MANAGER)
+  @ApiOperation({ summary: 'KPIs commissions agence — encaissées, en attente, top 5 owners (Story 9.3)' })
+  getCommissionKPIs(@CurrentUser() user: AuthUser) {
+    return this.service.getCommissionKPIs(user.id);
+  }
+
+  @Get('admin')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'KPIs plateforme — utilisateurs, biens, commissions, top agences (Story 9.4)' })
+  getAdminKPIs() {
+    return this.service.getAdminKPIs();
+  }
+
   @Get('stats')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Tableau de bord propriétaire / gestionnaire' })
@@ -29,7 +57,7 @@ export class DashboardController {
 
   @Get('tenant')
   @Roles(Role.TENANT)
-  @ApiOperation({ summary: 'Espace locataire' })
+  @ApiOperation({ summary: 'Espace locataire avec maintenances (Story 9.5)' })
   getTenantDashboard(@CurrentUser() user: AuthUser) {
     return this.service.getTenantDashboard(user.id);
   }
