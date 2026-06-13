@@ -1,0 +1,160 @@
+# Sprint Status — Immo Plus CM Backend
+# generated: 2026-06-12
+# project: immo-plus-backend
+# project_key: IMMO
+# tracking_system: file-system
+# story_location: "_bmad-output/implementation-artifacts"
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed and reviewed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Mark epic as 'in-progress' when starting work on its first story
+# - Create next story ONLY after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, ideally different LLM)
+
+generated: 2026-06-12
+last_updated: 2026-06-13 # 0-3 story file created, status backlog → ready-for-dev
+project: immo-plus-backend
+project_key: IMMO
+tracking_system: file-system
+story_location: "_bmad-output/implementation-artifacts"
+
+development_status:
+  # ─────────────────────────────────────────────────────────────────
+  # EP-0: Platform Foundation (Phase 1 + Phase 2 migrations)
+  # ─────────────────────────────────────────────────────────────────
+  epic-0: in-progress
+  0-1-prisma-pg-adapter: done               # src/prisma/prisma.service.ts — PrismaPg adapter + global module
+  0-2-event-emitter2-domain-events: review          # EventEmitter2 + DomainEvent base — implementation complete
+  0-3-domain-event-pdf-service: review         # PdfService — implementation complete 2026-06-13
+  0-4-transform-interceptor-filters: done   # TransformInterceptor + GlobalExceptionFilter in AppModule
+  0-5-bullmq-email-worker: review           # BullMQ notifications queue + EmailQueueService — done 2026-06-13
+  0-6-redis-cache-service: done             # src/cache/cache.service.ts — fully implemented
+  0-7-prisma-migrations-phase2: backlog     # Agency/AgencyMember/Mandate/Commission — Phase 2 prerequisite
+  epic-0-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-1: Auth & User Management (Phase 1)
+  # ─────────────────────────────────────────────────────────────────
+  epic-1: in-progress
+  1-1-register-otp-email: done              # src/auth/auth.service.ts — OTP, register, verify
+  1-2-login-jwt-refresh-rotation: done      # src/auth/auth.service.ts — JWT, refresh token rotation
+  1-3-password-reset-anti-enumeration: done # src/auth/auth.service.ts — reset flow
+  1-4-user-profile-management: done         # src/users/users.service.ts — profile CRUD
+  1-5-jwt-roles-guards-global: done         # AppModule providers — JwtAuthGuard, RolesGuard
+  1-6-mandate-guard: backlog                # Phase 2 — MandateGuard (depends on EP-7)
+  1-7-admin-user-management: backlog        # src/admin/ exists but listing/deactivate to verify
+  1-8-throttler-cors: done                  # ThrottlerModule in AppModule, CORS in main.ts
+  epic-1-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-2: Property Management (Phase 1)
+  # ─────────────────────────────────────────────────────────────────
+  epic-2: in-progress
+  2-1-create-property: done                 # src/properties/properties.service.ts
+  2-2-property-images-cover: done           # src/properties/ — image upload, cover management
+  2-3-publish-unpublish-property: done      # src/properties/properties.service.ts
+  2-4-property-status-softdelete: done      # src/properties/ — status update, soft-delete
+  2-5-public-property-listing: done         # src/properties/ — @Public() endpoint
+  2-6-dashboard-property-listing: done      # src/properties/ — role-based listing
+  2-7-property-documents: done              # src/documents/documents.service.ts
+  2-8-application-submission-public: backlog # No applications module — needs creation
+  2-9-application-processing-backoffice: backlog # Depends on 2-8
+  2-10-logging-interceptor: done            # LoggingInterceptor in AppModule
+  epic-2-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-3: Tenant Management (Phase 1)
+  # ─────────────────────────────────────────────────────────────────
+  epic-3: done
+  3-1-create-tenant-profile: done           # src/tenants/tenants.service.ts
+  3-2-tenant-full-dossier: done             # src/tenants/ — history with contracts + payments
+  3-3-tenant-listing-search: done           # src/tenants/ — paginated search
+  3-4-update-tenant-profile: done           # src/tenants/ — PATCH
+  epic-3-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-4: Lease Management (Phase 1 + Phase 3 PDF)
+  # ─────────────────────────────────────────────────────────────────
+  epic-4: in-progress
+  4-1-create-contract-atomic: done          # src/contracts/contracts.service.ts — UoW transaction
+  4-2-list-view-contracts: done             # src/contracts/ — paginated listing
+  4-3-renew-contract: done                  # src/contracts/contracts.service.ts
+  4-4-terminate-contract: done              # src/contracts/contracts.service.ts
+  4-5-contract-pdf-synchronous: backlog     # Phase 3 — TODO in ContractsService (depends on 0-3)
+  4-6-contract-expiry-cron: done            # src/queue/cron.service.ts — 00h05 cron
+  4-7-lease-expiry-alerts: done             # src/queue/cron.service.ts — J-7/J-15/J-30
+  epic-4-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-5: Payment Management (Phase 1 + Phase 3 alerts)
+  # ─────────────────────────────────────────────────────────────────
+  epic-5: in-progress
+  5-1-register-payment-paid: done           # src/payments/payments.service.ts — register PAID
+  5-2-late-payments-cron: done              # src/queue/cron.service.ts — 00h01 cron
+  5-3-configurable-payment-alerts: backlog  # Phase 3 — PaymentAlertConfig exists, email not wired
+  5-4-payment-history-reporting: done       # src/payments/ — history listing
+  5-5-receipt-pdf-download: backlog         # Needs PdfService (depends on 0-3)
+  5-6-tenant-payments-selfservice: backlog  # /tenants/me/payments — needs verification
+  epic-5-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-6: Maintenance Management (Phase 1 — MISSING MODULE)
+  # ─────────────────────────────────────────────────────────────────
+  epic-6: backlog
+  6-1-create-maintenance-request: backlog   # src/maintenance/ does NOT exist — full module to create
+  6-2-maintenance-status-progression: backlog
+  6-3-maintenance-listing-filters: backlog
+  6-4-tenant-maintenance-view: backlog
+  6-5-maintenance-photo-upload: backlog
+  epic-6-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-7: Agency & Mandate Management (Phase 2)
+  # ─────────────────────────────────────────────────────────────────
+  epic-7: backlog
+  7-1-agency-crud-admin: backlog
+  7-2-agency-member-assignment: backlog
+  7-3-create-mandate-non-exclusive: backlog
+  7-4-terminate-mandate: backlog
+  7-5-list-mandates: backlog
+  7-6-agency-public-profile: backlog
+  7-7-commission-params-mandate: backlog
+  7-8-mandate-expiry-cron: backlog
+  epic-7-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-8: Commission Management (Phase 2)
+  # ─────────────────────────────────────────────────────────────────
+  epic-8: backlog
+  8-1-auto-commission-management: backlog
+  8-2-manual-commission-creation: backlog
+  8-3-validate-commission-paid: backlog
+  8-4-cancel-pending-commission: backlog
+  8-5-commission-reporting-dashboard: backlog
+  8-6-owner-commission-view: backlog
+  epic-8-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-9: Dashboard & Analytics (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-9: backlog
+  9-1-portfolio-kpis-owner-manager: backlog
+  9-2-maintenance-kpis: backlog
+  9-3-commission-kpis-agency: backlog
+  9-4-admin-platform-kpis: backlog
+  9-5-tenant-dashboard: backlog
+  epic-9-retrospective: optional

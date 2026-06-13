@@ -103,7 +103,7 @@ describe('PropertiesService', () => {
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Belle villa',
-          priceLabel: '300 000 FCFA/mois',
+          priceLabel: (300000).toLocaleString('fr-FR') + ' FCFA/mois',
           ownerId: OWNER_ID,
           slug: expect.stringMatching(/^belle-villa-[a-f0-9]{8}$/),
         }),

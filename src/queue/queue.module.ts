@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 export const PDF_QUEUE = 'pdf';
 export const EMAIL_QUEUE = 'email';
 export const SMS_QUEUE = 'sms';
+export const NOTIFICATIONS_QUEUE = 'notifications';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ export const SMS_QUEUE = 'sms';
       { name: PDF_QUEUE },
       { name: EMAIL_QUEUE },
       { name: SMS_QUEUE },
+      { name: NOTIFICATIONS_QUEUE },
     ),
   ],
   exports: [BullModule],

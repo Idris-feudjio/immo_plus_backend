@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
@@ -12,6 +13,7 @@ import { DatabaseModule } from './database/database.module';
 import { RedisCacheModule } from './cache/cache.module';
 import { StorageModule } from './storage/storage.module';
 import { CronModule } from './queue/cron.module';
+import { QueueModule } from './queue/queue.module';
 
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -38,12 +40,19 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
       load: [appConfig, databaseConfig, redisConfig],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 200 }]),
+    EventEmitterModule.forRoot({
+      wildcard: true,
+      delimiter: '.',
+      maxListeners: 20,
+      verboseMemoryLeak: true,
+    }),
 
     PrismaModule,
     DatabaseModule,
     RedisCacheModule,
     StorageModule,
     CronModule,
+    QueueModule,
 
     AuthModule,
     UsersModule,
