@@ -2,7 +2,7 @@
 title: "Immo Plus CM — Plateforme de Gestion Immobilière"
 status: draft
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-06-14
 oq_status: all_resolved
 project: immo-plus-backend
 author: John (BMAD PM)
@@ -185,6 +185,30 @@ Un Utilisateur authentifié peut modifier ses informations (nom, téléphone, av
 **Acceptance Criteria :**
 - Avatar uploadé sur Cloudflare R2 via StorageService.
 - `bcrypt` salt rounds = 12 pour tous les hachages.
+
+#### FR-39 : Listing des utilisateurs (Admin)
+
+Un Admin peut lister l'ensemble des utilisateurs de la plateforme avec pagination et filtres.
+
+**Endpoint :** `GET /api/admin/users`
+
+**Consequences :**
+- Paramètres de pagination : `page` (défaut 1) et `limit` (défaut 10, max 100).
+- La réponse inclut `{ data, total, page, limit }`.
+- Filtres optionnels : `role` (valeur de l'enum Role), `isActive` (booléen), `search` (recherche insensible à la casse sur `firstName`, `lastName`, `email` en OR).
+- `passwordHash` n'est **jamais** retourné dans aucune réponse.
+- Tri par défaut : `createdAt` DESC.
+
+#### FR-40 : Désactivation d'un utilisateur (Admin)
+
+Un Admin peut désactiver un compte utilisateur spécifique.
+
+**Endpoint :** `PATCH /api/admin/users/:id/deactivate`
+
+**Consequences :**
+- Met `isActive` à `false` et retourne l'utilisateur mis à jour (HTTP 200, sans `passwordHash`).
+- Utilisateur inexistant → HTTP 404 (`USER_NOT_FOUND`).
+- Les deux endpoints FR-39 et FR-40 exigent le rôle ADMIN.
 
 ---
 
@@ -376,6 +400,27 @@ Le système envoie des alertes avant et après échéance selon la configuration
 
 Un Owner peut consulter l'historique complet des paiements avec filtres (statut, propriété, locataire, période).
 
+#### FR-41 : Historique des paiements en libre-service (Tenant)
+
+Un Tenant peut consulter la liste de ses propres paiements sans passer par un Owner ou Manager.
+
+**Endpoint :** `GET /tenants/me/payments`
+
+**Consequences :**
+- Retourne uniquement les paiements liés aux contrats actifs ou passés du Tenant connecté.
+- Accessible uniquement par le Tenant propriétaire des données (isolation par JWT).
+
+#### FR-42 : Téléchargement de quittance (Tenant)
+
+Un Tenant peut télécharger la quittance PDF d'un paiement qui lui appartient via une URL pré-signée.
+
+**Endpoint :** `GET /payments/:id/receipt`
+
+**Consequences :**
+- Retourne une URL pré-signée Cloudflare R2 valable pour la durée configurée.
+- Le Tenant ne peut accéder qu'aux quittances liées à ses propres contrats — toute tentative d'accès à une quittance tierce retourne HTTP 403.
+- Le paiement doit avoir le statut PAID et une `receiptUrl` générée — sinon HTTP 404.
+
 ---
 
 ### 4.6 Gestion des Maintenances
@@ -386,12 +431,13 @@ Un Owner peut consulter l'historique complet des paiements avec filtres (statut,
 
 #### FR-22 : Création d'une demande de maintenance
 
-Un Tenant (sur son bien loué) ou un Owner peut créer une demande avec : titre, description, urgence (LOW, NORMAL, HIGH, CRITICAL), photos optionnelles (URLs Cloudflare R2).
+Un Tenant (sur son bien loué) ou un Owner peut créer une demande avec : titre, description, urgence (LOW, NORMAL, HIGH, CRITICAL).
 
 **Consequences :**
 - Statut initial : OPEN.
 - L'Owner du bien reçoit une notification immédiate.
 - Urgence CRITICAL déclenche une notification additionnelle marquée prioritaire.
+- Des photos peuvent être ajoutées après création via un endpoint dédié (`POST /maintenance/:id/photos`) qui upload les fichiers sur Cloudflare R2 et stocke les URLs publiques.
 
 #### FR-23 : Gestion du cycle de vie d'une maintenance
 
@@ -504,6 +550,28 @@ Un Manager (ou Admin) peut consulter le tableau de bord des commissions : encais
 - Export CSV disponible (Phase 3).
 - Calcul automatique du CA commission mensuel de l'agence (HT + TVA + TTC).
 
+#### FR-43 : Annulation d'une commission en attente
+
+Un Owner ou un Admin peut annuler une Commission dont le statut est PENDING.
+
+**Endpoint :** `POST /commissions/:id/cancel`
+
+**Consequences :**
+- Le statut passe de PENDING à CANCELLED.
+- Une commission PAID est immuable — toute tentative d'annulation retourne HTTP 409.
+- Le Manager lié à la commission reçoit une notification d'annulation.
+
+#### FR-44 : Vue des commissions dues (Owner)
+
+Un Owner peut consulter la liste des commissions qu'il doit aux agences, regroupées par agence.
+
+**Endpoint :** `GET /commissions/my-due`
+
+**Consequences :**
+- Retourne uniquement les commissions liées aux biens de l'Owner connecté.
+- Regroupement par agence avec sous-total PENDING par agence.
+- Statuts inclus : PENDING et PAID (historique complet).
+
 ---
 
 ### 4.9 Dashboard Analytique
@@ -545,6 +613,17 @@ Un Admin peut consulter :
 - Nombre de biens, contrats actifs, paiements LATE sur la plateforme.
 - Revenu mensuel de la plateforme (commissions + services).
 - Agences les plus actives.
+
+#### FR-45 : Dashboard Tenant
+
+Un Tenant peut consulter un tableau de bord synthétique centré sur sa situation locative.
+
+**Endpoint :** `GET /dashboard/tenant`
+
+**Consequences :**
+- Affiche : résumé du contrat actif (bien, loyer, dates), prochain paiement dû (montant + date), 3 derniers paiements (statut + montant), compteurs de demandes de maintenance (OPEN, IN_PROGRESS, RESOLVED).
+- Si le Tenant n'a pas de contrat actif, retourne un état vide sans erreur.
+- Données calculées à la volée — pas de cache (volume faible, données personnelles).
 
 ---
 
@@ -616,37 +695,42 @@ Un Admin peut consulter :
 
 ## 7. MVP Scope & Roadmap
 
-### Phase 1 — Core (M0 → M2) ✅ Partiellement implémenté
+### Phase 1 — Core (M0 → M2) ✅ Complet
 
 | Module | Statut |
 |--------|--------|
 | Authentification (JWT, OTP, refresh, reset) | ✅ Implémenté |
+| Gestion des utilisateurs — profil + admin (FR-1–FR-4, FR-39–FR-40) | ✅ Implémenté |
 | Gestion des propriétés (CRUD, images, documents, publication) | ✅ Implémenté |
+| Candidatures publiques — soumission + traitement back-office (FR-36) | ✅ Implémenté |
 | Gestion des locataires (CRUD, dossier) | ✅ Implémenté |
-| Gestion des contrats (création, renouvellement, résiliation) | ✅ Implémenté |
-| Gestion des paiements (enregistrement, cron retards) | ✅ Implémenté |
-| Notifications in-app + email | 🔄 Partiellement (notifications créées, envoi email à compléter) |
-| Maintenances | ✅ Implémenté (schéma + service) |
+| Gestion des contrats (création, renouvellement, résiliation, PDF synchrone) | ✅ Implémenté |
+| Gestion des paiements (enregistrement, cron retards, quittance PDF, téléchargement Tenant) | ✅ Implémenté |
+| Alertes de paiement configurables + alertes expiration de bail | ✅ Implémenté |
+| Maintenances (CRUD, transitions de statut, upload photos R2) | ✅ Implémenté |
+| Notifications in-app + file BullMQ email | ✅ Implémenté |
+| Infrastructure (PrismaPg, Redis CacheService, PdfService, ThrottlerGuard, CORS) | ✅ Implémenté |
 
-### Phase 2 — Agences & Commissions (M2 → M4) 🚧 À développer
-
-| Module | Statut |
-|--------|--------|
-| Gestion des agences (création, membres, profil public) | ❌ À créer — entités `Agency`, `AgencyMember` |
-| Mandats de gestion non exclusifs (M:N Property ↔ Agency) | ❌ À créer — entité `Mandate` |
-| Commissions auto (MANAGEMENT) sur encaissement + manuelles | ❌ À créer — entité `Commission` |
-| PDF reçu commission synchrone | ❌ À créer |
-| Candidatures publiques (Application workflow back-office) | 🔄 Entité `Application` existe dans le schéma — UI back-office à créer |
-
-### Phase 3 — Analytics & Automatisation (M4 → M6) 🔮 Planifié
+### Phase 2 — Agences & Commissions (M2 → M4) ✅ Complet
 
 | Module | Statut |
 |--------|--------|
-| Dashboard analytique complet (KPIs, graphiques) | 🔄 DashboardService existe, à enrichir |
-| Génération PDF contrats + quittances **synchrone** | 🔄 TODO dans ContractsService — adapter en sync |
-| Alertes de paiement configurables (email uniquement MVP) | 🔄 Modèle `PaymentAlertConfig` existe |
-| Alertes d'expiration de bail (J-7, J-15, J-30) | ✅ CronService implémenté |
-| Rapports exportables (CSV commissions, paiements) | ❌ À créer (Phase 3 confirmée) |
+| Gestion des agences (création, membres, profil public, suspension) | ✅ Implémenté |
+| Mandats de gestion non exclusifs M:N — création, résiliation, expiration cron (FR-27, FR-37) | ✅ Implémenté |
+| MandateGuard — contrôle d'accès Manager sur les biens mandatés | ✅ Implémenté |
+| Commissions auto MANAGEMENT sur encaissement + manuelles + annulation (FR-38, FR-29, FR-43) | ✅ Implémenté |
+| Vue commissions dues Owner par agence (FR-44) | ✅ Implémenté |
+| PDF reçu commission synchrone | ✅ Implémenté |
+| Migrations Prisma Phase 2 — entités `Agency`, `AgencyMember`, `Mandate`, `Commission` | ✅ Implémenté |
+
+### Phase 3 — Analytics & Automatisation (M4 → M6) ✅ Partiellement complet
+
+| Module | Statut |
+|--------|--------|
+| Dashboard Owner / Manager — KPIs portefeuille, maintenances, commissions (FR-32–FR-34) | ✅ Implémenté |
+| Dashboard Admin — KPIs plateforme (FR-35) | ✅ Implémenté |
+| Dashboard Tenant — contrat actif, prochain paiement, historique, maintenances (FR-45) | ✅ Implémenté |
+| Rapports exportables (CSV commissions, paiements) | ❌ À créer — confirmé Phase 3 |
 
 ### Phase 4 — Marketplace & Mobile (M6+) 🔮 Vision
 
@@ -656,6 +740,7 @@ Un Admin peut consulter :
 | Application mobile React Native | ❌ v2 |
 | Signature électronique des contrats | ❌ v2 |
 | Intégration Mobile Money (API MTN / Orange) | ❌ v2 |
+| SMS notifications (MTN CM, Orange CM) | ❌ v2 |
 | Expansion marché CEMAC | ❌ v3 |
 
 ---
@@ -722,9 +807,9 @@ Toutes les questions ont été clarifiées le 2026-06-12 avec Idris Feudjio. Voi
 
 - **A-1 (§4.2 FR-6) :** Le message d'erreur de publication sans image est `"Le bien doit avoir au moins 1 image pour être publié."` — wording UX à confirmer avec le designer.
 - ~~**A-2** : PDF asynchrone via BullMQ~~ → **CLOS** (OQ-4 résolu : PDF synchrone, voir FR-17).
-- **A-3 (§4.7) :** Nouvelles entités à créer dans le schéma Prisma : `Agency`, `AgencyMember`, `Mandate`. Aucune migration n'existe à ce jour. Les relations exactes (cardinalités, champs) sont à préciser dans le document d'architecture.
-- **A-4 (§4.8) :** Nouvelle entité `Commission` à créer. Liée à `Mandate` (N:1) et `Contract` (N:1). Les champs `amountHT`, `tvaAmount`, `amountTTC` sont à ajouter au schéma. Type enum : `PLACEMENT`, `MANAGEMENT`, `EXCEPTIONAL`.
-- **A-5 (§4.9 FR-32) :** Les métriques dashboard sont cachées via Redis (TTL 5 min) pour éviter des requêtes agrégées coûteuses à chaque chargement.
-- **A-6 (§4.5 FR-18) :** La génération de quittance PDF est synchrone dans la transaction `registerPayment()`. Si la génération échoue (ex : panne R2), le paiement est quand même marqué PAID et la quittance est re-tentée à la prochaine requête. La stratégie de retry est à définir en architecture.
+- ~~**A-3 (§4.7) :** Entités `Agency`, `AgencyMember`, `Mandate` à créer~~ → **CLOS** (migrations Phase 2 livrées — story 0-7, 2026-06-13).
+- ~~**A-4 (§4.8) :** Entité `Commission` à créer avec `amountHT`, `tvaAmount`, `amountTTC`~~ → **CLOS** (migrations Phase 2 livrées — story 0-7, 2026-06-13).
+- ~~**A-5 (§4.9 FR-32) :** Cache Redis (TTL 5 min) pour les métriques dashboard~~ → **CLOS** (CacheService implémenté — story 0-6 ; TTL 5 min confirmé sur les endpoints dashboard).
+- ~~**A-6 (§4.5 FR-18) :** Génération de quittance synchrone dans `registerPayment()` — stratégie de retry à définir~~ → **CLOS** (PDF synchrone confirmé ; en cas d'échec R2 la transaction PAID reste commitée — comportement accepté pour le MVP).
 - **A-7 (§9.2) :** La TVA de 19,25 % s'applique aux commissions d'agence. À confirmer avec un comptable camerounais si les honoraires d'agence relèvent d'un régime TVA différent.
 - **A-8 (§4.7 FR-27) :** En cas de mandats non exclusifs multiples sur un même bien, la notification de commission pour l'Owner groupe les commissions de tous les Mandats actifs dans un seul email (à confirmer lors de la conception UX).
