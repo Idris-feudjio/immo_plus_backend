@@ -158,3 +158,57 @@ development_status:
   9-4-admin-platform-kpis: done             # GET /dashboard/admin — users, properties, contracts, late, revenue, top agencies — done 2026-06-13
   9-5-tenant-dashboard: done                # GET /dashboard/tenant — contract, next payment, last 3 payments, maintenance counts — done 2026-06-13
   epic-9-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-10: Security Hardening (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-10: in-progress
+  10-1-secure-otp-reset-token-delivery: ready-for-dev   # auth.service.ts — replace console.log with EmailQueueService
+  10-2-rbac-enforcement-all-endpoints: backlog
+  10-3-email-normalization-lowercase: backlog
+  10-4-turnstile-anti-bot-public-forms: backlog
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-11: File Storage Completion (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-11: backlog
+  11-1-property-image-upload-r2: backlog
+  11-2-maintenance-photo-upload-r2: backlog
+  11-3-file-upload-mime-size-validation: backlog
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-12: Data Integrity (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-12: backlog
+  12-1-contract-date-range-validation: backlog
+  12-2-unique-payment-period-constraint: backlog
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-13: Business Configuration (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-13: backlog
+  13-1-configurable-tva-rate-admin-settings: backlog
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-14: Communication Quality (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-14: backlog
+  14-1-email-template-infrastructure-auth: backlog
+  14-2-transactional-notification-templates: backlog
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-15: Analytics Completion (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-15: backlog
+  15-1-property-fees-charges-calculation: backlog
+  15-2-property-roi-calculation: backlog
+
+  # ─────────────────────────────────────────────────────────────────
+  # EP-16: Code Quality & Test Coverage (Phase 3)
+  # ─────────────────────────────────────────────────────────────────
+  epic-16: backlog
+  16-1-auth-service-unit-tests: backlog
+  16-2-users-service-unit-tests: backlog
+  16-3-notification-cache-storage-tests: backlog
+  16-4-eliminate-unsafe-typescript-casts: backlog
+  16-5-integration-test-flows: backlog
