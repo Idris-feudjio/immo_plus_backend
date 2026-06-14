@@ -4,7 +4,7 @@ baseline_commit: a75bd25
 
 # Story 10.1: Secure OTP & Reset Token Delivery
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -23,28 +23,28 @@ So that sensitive tokens are never exposed in application logs or CI/CD pipeline
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 — Import NotificationsModule into AuthModule (AC: 5)
-  - [ ] Add `NotificationsModule` to `AuthModule.imports[]` in `src/auth/auth.module.ts`
+- [x] Task 1 — Import NotificationsModule into AuthModule (AC: 5)
+  - [x] Add `NotificationsModule` to `AuthModule.imports[]` in `src/auth/auth.module.ts`
 
-- [ ] Task 2 — Inject EmailQueueService into AuthService (AC: 1, 2, 3)
-  - [ ] Add `private emailQueue: EmailQueueService` to `AuthService` constructor
-  - [ ] Add the import for `EmailQueueService` from `'../notifications/email-queue.service.js'`
+- [x] Task 2 — Inject EmailQueueService into AuthService (AC: 1, 2, 3)
+  - [x] Add `private emailQueue: EmailQueueService` to `AuthService` constructor
+  - [x] Add the import for `EmailQueueService` from `'../notifications/email-queue.service.js'`
 
-- [ ] Task 3 — Replace console.log in register() (AC: 1)
-  - [ ] Remove line 69: `console.log(\`OTP for ${user.email}: ${otp}\`)`
-  - [ ] Add `await this.emailQueue.sendEmail(...)` call with OTP job shape
+- [x] Task 3 — Replace console.log in register() (AC: 1)
+  - [x] Remove line 69: `console.log(\`OTP for ${user.email}: ${otp}\`)`
+  - [x] Add `await this.emailQueue.sendEmail(...)` call with OTP job shape
 
-- [ ] Task 4 — Replace console.log in resendOtp() (AC: 2)
-  - [ ] Remove line 125: `console.log(\`Resend OTP for ${user.email}: ${otp}\`)`
-  - [ ] Add `await this.emailQueue.sendEmail(...)` call with OTP job shape
+- [x] Task 4 — Replace console.log in resendOtp() (AC: 2)
+  - [x] Remove line 125: `console.log(\`Resend OTP for ${user.email}: ${otp}\`)`
+  - [x] Add `await this.emailQueue.sendEmail(...)` call with OTP job shape
 
-- [ ] Task 5 — Replace console.log in forgotPassword() (AC: 3)
-  - [ ] Remove line 185: `console.log(\`Reset link: ...\`)`
-  - [ ] Add `await this.emailQueue.sendEmail(...)` call with password-reset job shape
+- [x] Task 5 — Replace console.log in forgotPassword() (AC: 3)
+  - [x] Remove line 185: `console.log(\`Reset link: ...\`)`
+  - [x] Add `await this.emailQueue.sendEmail(...)` call with password-reset job shape
 
-- [ ] Task 6 — Verify no sensitive data leaks (AC: 1, 2, 3, 4)
-  - [ ] Search codebase for any remaining `console.log` containing OTP or token values
-  - [ ] Confirm `REDIS_ENABLED=false` path silently discards jobs (no stdout)
+- [x] Task 6 — Verify no sensitive data leaks (AC: 1, 2, 3, 4)
+  - [x] Search codebase for any remaining `console.log` containing OTP or token values — 0 résultat
+  - [x] Confirm `REDIS_ENABLED=false` path silently discards jobs (no stdout)
 
 ## Dev Notes
 
@@ -268,3 +268,27 @@ npx jest --passWithNoTests
 
 - `src/auth/auth.module.ts` — MODIFY (add NotificationsModule import)
 - `src/auth/auth.service.ts` — MODIFY (inject EmailQueueService, replace 3 console.log)
+
+## Dev Agent Record
+
+### Completion Notes
+
+- Implémentation complète en 2 fichiers modifiés, 0 nouveau fichier.
+- `NotificationsModule` importé dans `AuthModule` sans risque de dépendance circulaire (vérifié).
+- Les 3 `console.log` remplacés par `emailQueue.sendEmail()` avec les noms de templates `'otp'` et `'password-reset'` alignés sur EP-14 Story 14.1.
+- `REDIS_ENABLED=false` : les jobs sont résolus silencieusement via le no-op queue — aucun stdout, aucune erreur.
+- Validation finale : `tsc --noEmit` → 0 erreur, `grep console.log auth.service.ts` → 0 résultat, Jest → **221/221 tests passent, 0 régression**.
+- AC-6 (tests existants passent) : confirmé. Aucun test `auth.service.spec.ts` n'existait avant — pas de régression possible, couverture tests sera adressée en Story 16.1.
+
+### Debug Log
+
+| Date | Problème | Solution |
+|------|----------|----------|
+| 2026-06-14 | import manquait l'extension `.js` | Ajout de `.js` sur `email-queue.service.js` et `notifications.module.js` (convention nodenext) |
+
+## Change Log
+
+| Date | Type | Description |
+|------|------|-------------|
+| 2026-06-14 | feat | Remplace 3 console.log (OTP + reset token) par emailQueue.sendEmail() dans auth.service.ts |
+| 2026-06-14 | feat | Ajoute NotificationsModule aux imports de AuthModule pour résoudre EmailQueueService |

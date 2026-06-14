@@ -55,6 +55,7 @@ export class AgenciesController {
   }
 
   @Post(':id/members')
+  @Roles(Role.ADMIN, Role.MANAGER)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Add a member to an agency' })
   addMember(
@@ -66,6 +67,7 @@ export class AgenciesController {
   }
 
   @Delete(':id/members/:memberId')
+  @Roles(Role.ADMIN, Role.MANAGER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove a member from an agency' })
   async removeMember(

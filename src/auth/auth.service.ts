@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailQueueService } from '../notifications/email-queue.service.js';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
@@ -21,6 +22,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private config: ConfigService,
+    private emailQueue: EmailQueueService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -28,7 +30,9 @@ export class AuthService {
       throw new BadRequestException('Les mots de passe ne correspondent pas.');
     }
 
-    const existingEmail = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const email = dto.email.toLowerCase();
+
+    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
     if (existingEmail) {
       throw new ConflictException({ error: 'EMAIL_ALREADY_EXISTS', message: 'Email déjà utilisé.' });
     }
@@ -51,7 +55,7 @@ export class AuthService {
       data: {
         firstName: dto.firstName,
         lastName: dto.lastName,
-        email: dto.email,
+        email,
         phone: dto.phone,
         passwordHash,
         role: dto.role,
@@ -65,8 +69,12 @@ export class AuthService {
       data: { userId: user.id, code: otp, expiresAt },
     });
 
-    // TODO: send OTP via email and SMS
-    console.log(`OTP for ${user.email}: ${otp}`);
+    await this.emailQueue.sendEmail({
+      to: user.email,
+      subject: 'Votre code de vérification Immo Plus CM',
+      template: 'otp',
+      data: { name: user.firstName, otp },
+    });
 
     return {
       message: 'Compte créé. Vérifiez votre email pour activer votre compte.',
@@ -122,13 +130,20 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await this.prisma.otpCode.create({ data: { userId, code: otp, expiresAt } });
-    console.log(`Resend OTP for ${user.email}: ${otp}`);
+
+    await this.emailQueue.sendEmail({
+      to: user.email,
+      subject: 'Votre nouveau code de vérification Immo Plus CM',
+      template: 'otp',
+      data: { name: user.firstName, otp },
+    });
 
     return { message: 'OTP renvoyé avec succès.' };
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const email = dto.email.toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
@@ -173,7 +188,8 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = email.toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       return { message: 'Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.' };
     }
@@ -182,7 +198,16 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     await this.prisma.passwordResetToken.create({ data: { userId: user.id, token, expiresAt } });
-    console.log(`Reset link: ${this.config.get('FRONTEND_URL')}/reset-password?token=${token}`);
+
+    await this.emailQueue.sendEmail({
+      to: user.email,
+      subject: 'Réinitialisation de votre mot de passe Immo Plus CM',
+      template: 'password-reset',
+      data: {
+        name: user.firstName,
+        resetUrl: `${this.config.get('FRONTEND_URL')}/reset-password?token=${token}`,
+      },
+    });
 
     return { message: 'Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.' };
   }

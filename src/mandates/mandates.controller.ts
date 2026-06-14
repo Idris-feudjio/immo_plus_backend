@@ -9,8 +9,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { MandateStatus } from '@prisma/client';
+import { MandateStatus, Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator.js';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { CreateMandateDto, ListMandatesDto, TerminateMandateDto } from './dto/mandate.dto';
 import { MandatesService } from './mandates.service';
@@ -21,6 +22,7 @@ export class MandatesController {
   constructor(private readonly service: MandatesService) {}
 
   @Post()
+  @Roles(Role.OWNER, Role.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a mandate' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateMandateDto) {
@@ -28,6 +30,7 @@ export class MandatesController {
   }
 
   @Post(':id/terminate')
+  @Roles(Role.OWNER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Terminate a mandate' })
   terminate(

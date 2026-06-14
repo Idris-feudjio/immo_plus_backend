@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ApplicationStatus } from '@prisma/client';
-import { IsEmail, IsEnum, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTenantDto {
@@ -95,6 +95,11 @@ export class CreateApplicationDto {
   @IsOptional()
   @IsString()
   occupation?: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  turnstileToken: string;
 }
 
 export class UpdateApplicationDto {

@@ -33,6 +33,7 @@ export class DocumentsController {
   }
 
   @Post('export')
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Exporter un rapport PDF (asynchrone)' })
   createExport(

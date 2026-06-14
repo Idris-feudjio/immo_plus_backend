@@ -6,12 +6,15 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { TurnstileGuard } from '../common/guards/turnstile.guard.js';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import {
   CreateApplicationDto,
@@ -75,6 +78,8 @@ export class ApplicationsController {
   constructor(private readonly service: TenantsService) {}
 
   @Public()
+  @UseGuards(TurnstileGuard)
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
   @Post(':slug/applications')
   @ApiOperation({ summary: 'Déposer une candidature' })
   create(@Param('slug') slug: string, @Body() dto: CreateApplicationDto) {

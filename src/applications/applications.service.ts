@@ -17,6 +17,7 @@ export class SubmitApplicationDto {
   phone?: string;
   propertyId: string;
   message?: string;
+  turnstileToken?: string;
 }
 
 export class ListApplicationsQuery {

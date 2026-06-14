@@ -26,7 +26,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, ideally different LLM)
 
 generated: 2026-06-12
-last_updated: 2026-06-13 # 0-3 story file created, status backlog → ready-for-dev
+last_updated: 2026-06-14 # 10-2 ready-for-dev — RBAC story file created
 project: immo-plus-backend
 project_key: IMMO
 tracking_system: file-system
@@ -163,10 +163,10 @@ development_status:
   # EP-10: Security Hardening (Phase 3)
   # ─────────────────────────────────────────────────────────────────
   epic-10: in-progress
-  10-1-secure-otp-reset-token-delivery: ready-for-dev   # auth.service.ts — replace console.log with EmailQueueService
-  10-2-rbac-enforcement-all-endpoints: backlog
-  10-3-email-normalization-lowercase: backlog
-  10-4-turnstile-anti-bot-public-forms: backlog
+  10-1-secure-otp-reset-token-delivery: review            # auth.service.ts — EmailQueueService injecté, 3 console.log remplacés — 2026-06-14
+  10-2-rbac-enforcement-all-endpoints: review               # 5 @Roles ajoutés, 3 controllers — 2026-06-14
+  10-3-email-normalization-lowercase: review                 # toLowerCase dans register/login/forgotPwd + migration — 2026-06-14
+  10-4-turnstile-anti-bot-public-forms: review              # TurnstileGuard + @Throttle 5/h sur les 2 endpoints publics — 2026-06-14
 
   # ─────────────────────────────────────────────────────────────────
   # EP-11: File Storage Completion (Phase 3)
