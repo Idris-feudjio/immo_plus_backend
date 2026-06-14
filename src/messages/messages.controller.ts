@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Post,
@@ -16,15 +15,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import type { IMessagesService } from './interfaces/message-service.interface';
-import { MESSAGES_SERVICE } from './interfaces/message-service.interface';
+import { MessagesService } from './messages.service';
 
 @ApiTags('Messages')
 @Controller('messages')
 export class MessagesController {
-  constructor(
-    @Inject(MESSAGES_SERVICE) private readonly service: IMessagesService,
-  ) {}
+  constructor(private readonly service: MessagesService) {}
 
   @Get('conversations')
   @ApiOperation({ summary: 'Liste des conversations' })

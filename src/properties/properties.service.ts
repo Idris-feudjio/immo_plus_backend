@@ -15,11 +15,7 @@ import type { PaginatedResult } from '../common/interfaces/paginated-result.inte
 import type { SearchRequest, SortClause } from '../common/interfaces/search-request.interface';
 import { v4 as uuidv4 } from 'uuid';
 import { CreatePropertyDto, FilterPropertiesDto, UpdatePropertyDto } from './dto/create-property.dto';
-import {
-  IPropertyService,
-  PropertyDocumentInput,
-  PropertyImageInput,
-} from './interfaces/property-service.interface';
+import { PropertyDocumentInput, PropertyImageInput } from './dto/create-property.dto';
 import {
   PropertyCreateData,
   PropertyListItem,
@@ -41,7 +37,7 @@ function buildPriceLabel(price: number): string {
 }
 
 @Injectable()
-export class PropertiesService implements IPropertyService {
+export class PropertiesService {
   constructor(private readonly repository: PropertyRepository) {}
 
   listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {

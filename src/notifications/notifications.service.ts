@@ -2,14 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Notification, NotificationPreference, PaymentAlertConfig } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { INotificationsService } from './interfaces/notification-service.interface';
 import { NotificationCreateData, NotificationRepository } from './notification.repository';
 
 @Injectable()
-export class NotificationsService
-  extends BaseService<Notification, NotificationCreateData>
-  implements INotificationsService
-{
+export class NotificationsService extends BaseService<Notification, NotificationCreateData> {
   constructor(protected override readonly repository: NotificationRepository) {
     super(repository);
   }

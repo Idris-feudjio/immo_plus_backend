@@ -7,11 +7,10 @@ import {
   UpdateApplicationDto,
   UpdateTenantDto,
 } from './dto/tenant.dto';
-import type { ITenantsService } from './interfaces/tenants-service.interface';
 import { TenantRepository } from './tenant.repository';
 
 @Injectable()
-export class TenantsService implements ITenantsService {
+export class TenantsService {
   constructor(private readonly repository: TenantRepository) {}
 
   list(

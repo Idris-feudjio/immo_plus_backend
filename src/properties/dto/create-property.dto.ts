@@ -1,5 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PropertyType, PropertyStatus } from '@prisma/client';
+
+export interface PropertyImageInput {
+  url: string;
+  thumbUrl: string;
+}
+
+export interface PropertyDocumentInput {
+  name: string;
+  url: string;
+}
 import {
   IsDecimal,
   IsEnum,

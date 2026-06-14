@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Put,
@@ -13,14 +12,13 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
-import type { IAdminService } from './interfaces/admin-service.interface';
-import { ADMIN_SERVICE } from './interfaces/admin-service.interface';
+import { AdminService } from './admin.service';
 
 @ApiTags('Admin')
 @Controller('admin')
 @Roles(Role.ADMIN)
 export class AdminController {
-  constructor(@Inject(ADMIN_SERVICE) private readonly service: IAdminService) {}
+  constructor(private readonly service: AdminService) {}
 
   @Get('stats')
   @ApiOperation({ summary: 'Statistiques globales (admin)' })

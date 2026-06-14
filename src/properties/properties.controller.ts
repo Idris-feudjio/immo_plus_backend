@@ -5,7 +5,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Post,
@@ -28,16 +27,13 @@ import {
   FilterPropertiesDto,
   UpdatePropertyDto,
 } from './dto/create-property.dto';
-import type { IPropertyService } from './interfaces/property-service.interface';
-import { PROPERTY_SERVICE } from './interfaces/property-service.interface';
+import { PropertiesService } from './properties.service';
 
 @ApiTags('Properties')
 @Controller('properties')
 @UseInterceptors(CacheInterceptor)
 export class PropertiesController {
-  constructor(
-    @Inject(PROPERTY_SERVICE) private readonly service: IPropertyService,
-  ) {}
+  constructor(private readonly service: PropertiesService) {}
 
   @Public()
   @Get()

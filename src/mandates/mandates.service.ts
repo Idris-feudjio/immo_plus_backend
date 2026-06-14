@@ -9,11 +9,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { CreateMandateDto, ListMandatesDto, TerminateMandateDto } from './dto/mandate.dto';
-import type { IMandateService } from './interfaces/mandate-service.interface';
 import { MandateRepository } from './mandate.repository';
 
 @Injectable()
-export class MandatesService implements IMandateService {
+export class MandatesService {
   constructor(
     private readonly repository: MandateRepository,
     private readonly prisma: PrismaService,

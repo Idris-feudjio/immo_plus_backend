@@ -2,14 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { Message } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { ConversationItem, IMessagesService } from './interfaces/message-service.interface';
 import { MessageCreateData, MessageRepository } from './message.repository';
 
+export interface ConversationItem {
+  contact: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    avatarUrl: string | null;
+  };
+  lastMessage: { content: string; createdAt: Date };
+  unreadCount: number;
+}
+
 @Injectable()
-export class MessagesService
-  extends BaseService<Message, MessageCreateData>
-  implements IMessagesService
-{
+export class MessagesService extends BaseService<Message, MessageCreateData> {
   constructor(protected override readonly repository: MessageRepository) {
     super(repository);
   }

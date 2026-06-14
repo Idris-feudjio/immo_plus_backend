@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Post,
@@ -19,13 +18,12 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { CreateMaintenanceDto, FilterMaintenanceDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
-import type { IMaintenanceService } from './interfaces/maintenance-service.interface';
-import { MAINTENANCE_SERVICE } from './interfaces/maintenance-service.interface';
+import { MaintenanceService } from './maintenance.service';
 
 @ApiTags('Maintenance')
 @Controller('maintenance')
 export class MaintenanceController {
-  constructor(@Inject(MAINTENANCE_SERVICE) private readonly service: IMaintenanceService) {}
+  constructor(private readonly service: MaintenanceService) {}
 
   // ── Story 6.4: Tenant view (must come before :id routes) ─────────────────────
 

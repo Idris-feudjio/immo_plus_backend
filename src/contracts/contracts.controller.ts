@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Post,
   Query,
@@ -20,13 +19,12 @@ import {
   RenewContractDto,
   TerminateContractDto,
 } from './dto/contract.dto';
-import type { IContractsService } from './interfaces/contracts-service.interface';
-import { CONTRACTS_SERVICE } from './interfaces/contracts-service.interface';
+import { ContractsService } from './contracts.service';
 
 @ApiTags('Contracts')
 @Controller('contracts')
 export class ContractsController {
-  constructor(@Inject(CONTRACTS_SERVICE) private readonly service: IContractsService) {}
+  constructor(private readonly service: ContractsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Liste des contrats' })

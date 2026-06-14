@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ContractStatus, PaymentStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ListUsersQuery } from './interfaces/admin-service.interface';
+interface ListUsersQuery {
+  page?: number;
+  limit?: number;
+  role?: Role;
+  isActive?: boolean;
+  search?: string;
+}
 
 const USER_SELECT = {
   id: true,

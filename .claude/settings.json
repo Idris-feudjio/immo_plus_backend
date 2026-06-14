@@ -5,7 +5,12 @@
       "PowerShell(npx tsc --noEmit 2>&1)",
       "PowerShell(npx jest --no-coverage --passWithNoTests 2>&1)",
       "PowerShell(npx jest --no-coverage 2>&1)",
-      "Bash(python3 \"c:/Users/idris/Documents/Projects/immo-plus-backend/_bmad/scripts/resolve_customization.py\" --skill \"c:/Users/idris/Documents/Projects/immo-plus-backend/.claude/skills/bmad-prd\" --key workflow)"
+      "Bash(python3 \"c:/Users/idris/Documents/Projects/immo-plus-backend/_bmad/scripts/resolve_customization.py\" --skill \"c:/Users/idris/Documents/Projects/immo-plus-backend/.claude/skills/bmad-prd\" --key workflow)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\agencies\\\\interfaces\\\\agency-service.interface.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\mandates\\\\interfaces\\\\mandate-service.interface.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\properties\\\\interfaces\\\\property-service.interface.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\tenants\\\\interfaces\\\\tenants-service.interface.ts\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\maintenance\\\\interfaces\\\\maintenance-service.interface.ts\" -Force)"
     ]
   }
 }

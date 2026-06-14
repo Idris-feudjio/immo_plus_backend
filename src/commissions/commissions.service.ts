@@ -14,7 +14,6 @@ import { EmailQueueService } from '../notifications/email-queue.service';
 import { MandateRepository } from '../mandates/mandate.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { CreateCommissionDto, FilterCommissionsDto, PayCommissionDto } from './dto/commission.dto';
-import type { ICommissionService } from './interfaces/commission-service.interface';
 import { CommissionRepository } from './commission.repository';
 
 type WithRelations = Commission & {
@@ -39,7 +38,7 @@ type WithRelations = Commission & {
 };
 
 @Injectable()
-export class CommissionsService implements ICommissionService {
+export class CommissionsService {
   constructor(
     private readonly repository: CommissionRepository,
     private readonly prisma: PrismaService,

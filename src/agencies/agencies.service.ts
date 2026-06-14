@@ -10,10 +10,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { AddAgencyMemberDto, CreateAgencyDto, ListAgenciesDto } from './dto/agency.dto';
-import type { IAgencyService, PublicAgencyProfile } from './interfaces/agency-service.interface';
+import type { PublicAgencyProfile } from './dto/agency.dto';
 
 @Injectable()
-export class AgenciesService implements IAgencyService {
+export class AgenciesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,

@@ -1,18 +1,17 @@
 import {
-  Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Query,
+  Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import type { IDocumentsService } from './interfaces/documents-service.interface';
-import { DOCUMENTS_SERVICE } from './interfaces/documents-service.interface';
+import { DocumentsService } from './documents.service';
 
 @ApiTags('Reports')
 @Controller('reports')
 export class DocumentsController {
-  constructor(@Inject(DOCUMENTS_SERVICE) private readonly service: IDocumentsService) {}
+  constructor(private readonly service: DocumentsService) {}
 
   @Get('financial')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)

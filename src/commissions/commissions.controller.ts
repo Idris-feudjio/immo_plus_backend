@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Inject,
   Param,
   Post,
   Query,
@@ -12,17 +11,13 @@ import { Role } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import type { ICommissionService } from './interfaces/commission-service.interface';
-import { COMMISSION_SERVICE } from './interfaces/commission-service.interface';
 import { CreateCommissionDto, FilterCommissionsDto, PayCommissionDto } from './dto/commission.dto';
+import { CommissionsService } from './commissions.service';
 
 @ApiTags('commissions')
 @Controller('commissions')
 export class CommissionsController {
-  constructor(
-    @Inject(COMMISSION_SERVICE)
-    private readonly service: ICommissionService,
-  ) {}
+  constructor(private readonly service: CommissionsService) {}
 
   @Get('dashboard')
   @Roles(Role.MANAGER, Role.ADMIN)

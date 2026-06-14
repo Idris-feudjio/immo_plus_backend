@@ -11,11 +11,10 @@ import {
   SendRemindersDto,
   UpdatePaymentDto,
 } from './dto/payment.dto';
-import type { IPaymentsService } from './interfaces/payments-service.interface';
 import { PaymentRepository } from './payment.repository';
 
 @Injectable()
-export class PaymentsService implements IPaymentsService {
+export class PaymentsService {
   constructor(
     private readonly repository: PaymentRepository,
     private readonly storage: StorageService,

@@ -22,13 +22,12 @@ import {
   RenewContractDto,
   TerminateContractDto,
 } from './dto/contract.dto';
-import type { IContractsService } from './interfaces/contracts-service.interface';
 import { ContractRepository } from './contract.repository';
 
 const TVA_RATE = 19.25;
 
 @Injectable()
-export class ContractsService implements IContractsService {
+export class ContractsService {
   constructor(
     private readonly repository: ContractRepository,
     private readonly uow: UnitOfWorkService,

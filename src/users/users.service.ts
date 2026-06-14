@@ -2,11 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
 import { AdminUpdateUserDto, DelegationDto, UpdateProfileDto } from './dto/update-user.dto';
-import type { IUsersService } from './interfaces/users-service.interface';
 import { UserCreateData, UserRepository, UserView } from './user.repository';
 
 @Injectable()
-export class UsersService extends BaseService<User, UserCreateData> implements IUsersService {
+export class UsersService extends BaseService<User, UserCreateData> {
   constructor(protected override readonly repository: UserRepository) {
     super(repository);
   }

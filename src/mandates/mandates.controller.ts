@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Post,
   Query,
@@ -14,13 +13,12 @@ import { MandateStatus } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { CreateMandateDto, ListMandatesDto, TerminateMandateDto } from './dto/mandate.dto';
-import { MANDATE_SERVICE } from './interfaces/mandate-service.interface';
-import type { IMandateService } from './interfaces/mandate-service.interface';
+import { MandatesService } from './mandates.service';
 
 @ApiTags('Mandates')
 @Controller('mandates')
 export class MandatesController {
-  constructor(@Inject(MANDATE_SERVICE) private readonly service: IMandateService) {}
+  constructor(private readonly service: MandatesService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

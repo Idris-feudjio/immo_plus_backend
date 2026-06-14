@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query,
+  Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -7,17 +7,15 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { FilterPropertiesDto } from '../properties/dto/create-property.dto';
-import type { IPropertyService } from '../properties/interfaces/property-service.interface';
-import { PROPERTY_SERVICE } from '../properties/interfaces/property-service.interface';
-import type { IDashboardService } from './interfaces/dashboard-service.interface';
-import { DASHBOARD_SERVICE } from './interfaces/dashboard-service.interface';
+import { PropertiesService } from '../properties/properties.service';
+import { DashboardService } from './dashboard.service';
 
 @ApiTags('Dashboard')
 @Controller('dashboard')
 export class DashboardController {
   constructor(
-    @Inject(DASHBOARD_SERVICE) private readonly service: IDashboardService,
-    @Inject(PROPERTY_SERVICE) private readonly properties: IPropertyService,
+    private readonly service: DashboardService,
+    private readonly properties: PropertiesService,
   ) {}
 
   @Get('portfolio')
@@ -73,7 +71,7 @@ export class DashboardController {
 @ApiTags('Maintenance')
 @Controller('maintenance-requests')
 export class MaintenanceController {
-  constructor(@Inject(DASHBOARD_SERVICE) private readonly service: IDashboardService) {}
+  constructor(private readonly service: DashboardService) {}
 
   @Get()
   @ApiOperation({ summary: 'Liste des demandes de maintenance' })

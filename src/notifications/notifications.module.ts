@@ -7,7 +7,6 @@ import { NotificationsService } from './notifications.service';
 import { NotificationRepository } from './notification.repository';
 import { NotificationsProcessor } from './notifications.processor';
 import { EmailQueueService } from './email-queue.service';
-import { NOTIFICATIONS_SERVICE } from './interfaces/notification-service.interface';
 import { NODEMAILER_TRANSPORT } from './nodemailer-transport.token';
 
 @Module({
@@ -15,7 +14,7 @@ import { NODEMAILER_TRANSPORT } from './nodemailer-transport.token';
   controllers: [NotificationsController],
   providers: [
     NotificationRepository,
-    { provide: NOTIFICATIONS_SERVICE, useClass: NotificationsService },
+    NotificationsService,
     {
       provide: NODEMAILER_TRANSPORT,
       inject: [ConfigService],
@@ -33,6 +32,6 @@ import { NODEMAILER_TRANSPORT } from './nodemailer-transport.token';
     NotificationsProcessor,
     EmailQueueService,
   ],
-  exports: [NOTIFICATIONS_SERVICE, NotificationRepository, EmailQueueService],
+  exports: [NotificationsService, NotificationRepository, EmailQueueService],
 })
 export class NotificationsModule {}

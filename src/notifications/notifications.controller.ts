@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Put,
@@ -13,15 +12,12 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import type { INotificationsService } from './interfaces/notification-service.interface';
-import { NOTIFICATIONS_SERVICE } from './interfaces/notification-service.interface';
+import { NotificationsService } from './notifications.service';
 
 @ApiTags('Notifications')
 @Controller('notifications')
 export class NotificationsController {
-  constructor(
-    @Inject(NOTIFICATIONS_SERVICE) private readonly service: INotificationsService,
-  ) {}
+  constructor(private readonly service: NotificationsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Liste des notifications' })

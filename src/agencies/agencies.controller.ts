@@ -5,7 +5,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Post,
@@ -18,13 +17,12 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { AddAgencyMemberDto, CreateAgencyDto, ListAgenciesDto } from './dto/agency.dto';
-import { AGENCY_SERVICE } from './interfaces/agency-service.interface';
-import type { IAgencyService } from './interfaces/agency-service.interface';
+import { AgenciesService } from './agencies.service';
 
 @ApiTags('Agencies')
 @Controller('agencies')
 export class AgenciesController {
-  constructor(@Inject(AGENCY_SERVICE) private readonly service: IAgencyService) {}
+  constructor(private readonly service: AgenciesService) {}
 
   @Post()
   @Roles(Role.ADMIN)

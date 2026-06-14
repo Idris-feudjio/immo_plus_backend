@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Inject,
   Param,
   Patch,
   Post,
@@ -20,13 +19,12 @@ import {
   UpdateApplicationDto,
   UpdateTenantDto,
 } from './dto/tenant.dto';
-import type { ITenantsService } from './interfaces/tenants-service.interface';
-import { TENANTS_SERVICE } from './interfaces/tenants-service.interface';
+import { TenantsService } from './tenants.service';
 
 @ApiTags('Tenants')
 @Controller('tenants')
 export class TenantsController {
-  constructor(@Inject(TENANTS_SERVICE) private readonly service: ITenantsService) {}
+  constructor(private readonly service: TenantsService) {}
 
   @Get()
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
@@ -74,7 +72,7 @@ export class TenantsController {
 @ApiTags('Properties')
 @Controller('properties')
 export class ApplicationsController {
-  constructor(@Inject(TENANTS_SERVICE) private readonly service: ITenantsService) {}
+  constructor(private readonly service: TenantsService) {}
 
   @Public()
   @Post(':slug/applications')

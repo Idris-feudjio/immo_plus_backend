@@ -1,5 +1,14 @@
 import type { AgencyMemberRole } from '@prisma/client';
 
+export interface PublicAgencyProfile {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string;
+  email: string;
+  managedPropertiesCount: number;
+}
+
 export class CreateAgencyDto {
   name!: string;
   email!: string;

@@ -25,10 +25,8 @@ import type {
   FilterMaintenanceDto,
   UpdateMaintenanceStatusDto,
 } from './dto/maintenance.dto';
-import type { IMaintenanceService } from './interfaces/maintenance-service.interface';
-
 @Injectable()
-export class MaintenanceService implements IMaintenanceService {
+export class MaintenanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationRepo: NotificationRepository,

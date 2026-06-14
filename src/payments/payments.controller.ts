@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Post,
@@ -21,13 +20,12 @@ import {
   SendRemindersDto,
   UpdatePaymentDto,
 } from './dto/payment.dto';
-import type { IPaymentsService } from './interfaces/payments-service.interface';
-import { PAYMENTS_SERVICE } from './interfaces/payments-service.interface';
+import { PaymentsService } from './payments.service';
 
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(@Inject(PAYMENTS_SERVICE) private readonly service: IPaymentsService) {}
+  constructor(private readonly service: PaymentsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Liste des paiements' })
