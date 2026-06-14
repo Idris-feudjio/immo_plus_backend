@@ -124,6 +124,9 @@ export class TenantRepository extends BaseRepository<Tenant, TenantCreateData> {
   createApplication(data: {
     propertyId: string;
     tenantId?: string;
+    firstName: string;
+    lastName: string;
+    email: string;
     message?: string;
     income?: number;
     occupation?: string;

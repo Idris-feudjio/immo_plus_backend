@@ -48,9 +48,14 @@ export class TenantsService {
     const property = await this.repository.findPropertyBySlug(propertySlug);
     if (!property) throw new NotFoundException('Bien introuvable.');
 
+    const tenant = dto.tenantId ? await this.repository.findById(dto.tenantId) : null;
+
     const application = await this.repository.createApplication({
       propertyId: property.id,
       tenantId: dto.tenantId,
+      firstName: tenant?.firstName ?? '',
+      lastName: tenant?.lastName ?? '',
+      email: tenant?.email ?? '',
       message: dto.message,
       income: dto.income,
       occupation: dto.occupation,

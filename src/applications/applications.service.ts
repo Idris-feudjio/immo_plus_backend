@@ -10,7 +10,7 @@ import { EmailQueueService } from '../notifications/email-queue.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import { PrismaService } from '../prisma/prisma.service';
 
-export interface SubmitApplicationDto {
+export class SubmitApplicationDto {
   firstName: string;
   lastName: string;
   email: string;
@@ -19,7 +19,7 @@ export interface SubmitApplicationDto {
   message?: string;
 }
 
-export interface ListApplicationsQuery {
+export class ListApplicationsQuery {
   propertyId: string;
   status?: ApplicationStatus;
   page?: number;

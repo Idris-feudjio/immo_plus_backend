@@ -10,7 +10,13 @@
       "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\mandates\\\\interfaces\\\\mandate-service.interface.ts\" -Force)",
       "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\properties\\\\interfaces\\\\property-service.interface.ts\" -Force)",
       "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\tenants\\\\interfaces\\\\tenants-service.interface.ts\" -Force)",
-      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\maintenance\\\\interfaces\\\\maintenance-service.interface.ts\" -Force)"
+      "Bash(Remove-Item \"c:\\\\Users\\\\idris\\\\Documents\\\\Projects\\\\immo-plus-backend\\\\src\\\\maintenance\\\\interfaces\\\\maintenance-service.interface.ts\" -Force)",
+      "Bash(docker --version)",
+      "Bash(wsl --list --running)",
+      "Bash(where redis-server *)",
+      "Bash(choco --version)",
+      "Bash(winget --version)",
+      "Bash(winget search *)"
     ]
   }
 }

@@ -23,7 +23,7 @@ export class AdminUpdateUserDto {
   @ApiPropertyOptional({ enum: ['OWNER', 'TENANT', 'MANAGER'], description: 'Le rôle ADMIN ne peut pas être assigné via cette route' })
   @IsOptional()
   @IsEnum(['OWNER', 'TENANT', 'MANAGER'])
-  role?: Exclude<Role, Role.ADMIN>;
+  role?: Exclude<Role, 'ADMIN'>;
 
   @ApiPropertyOptional()
   @IsOptional()

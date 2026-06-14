@@ -136,8 +136,8 @@ export class MaintenanceService {
     });
     if (!existing) throw new NotFoundException('MAINTENANCE_NOT_FOUND');
 
-    const ownerManagerStatuses = [MaintenanceStatus.IN_PROGRESS, MaintenanceStatus.RESOLVED];
-    const tenantStatuses = [MaintenanceStatus.CLOSED, MaintenanceStatus.OPEN];
+    const ownerManagerStatuses: MaintenanceStatus[] = [MaintenanceStatus.IN_PROGRESS, MaintenanceStatus.RESOLVED];
+    const tenantStatuses: MaintenanceStatus[] = [MaintenanceStatus.CLOSED, MaintenanceStatus.OPEN];
 
     if (ownerManagerStatuses.includes(dto.status)) {
       // OPEN → IN_PROGRESS or IN_PROGRESS → RESOLVED: Owner / Manager / Admin only
