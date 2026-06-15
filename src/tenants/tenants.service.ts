@@ -1,54 +1,54 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Application, Tenant } from '@prisma/client';
-import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import { BaseService } from '../common/abstractions/base.service';
 import {
   CreateApplicationDto,
   CreateTenantDto,
   UpdateApplicationDto,
   UpdateTenantDto,
 } from './dto/tenant.dto';
-import { TenantRepository } from './tenant.repository';
+import { TenantCreateData, TenantRepository } from './tenant.repository';
 
 @Injectable()
-export class TenantsService {
-  constructor(private readonly repository: TenantRepository) {}
-
-  list(
-    ownerId: string,
-    role: string,
-    query: { search?: string; page?: number; limit?: number },
-  ): Promise<PaginatedResult<Tenant>> {
-    return this.repository.findListPaginated(ownerId, role, query);
+export class TenantsService extends BaseService<Tenant, TenantCreateData> {
+  constructor(protected override readonly repository: TenantRepository) {
+    super(repository);
   }
 
-  async create(ownerId: string, dto: CreateTenantDto): Promise<Tenant> {
+  // ── Tenant CRUD ──────────────────────────────────────────────────────────────
+
+  /** Create a tenant, linking an existing user account if the email matches. */
+  async createTenant(ownerId: string, dto: CreateTenantDto): Promise<Tenant> {
     const existingUser = await this.repository.findUserByEmail(dto.email);
-    return this.repository.create({
-      ...dto,
-      ownerId,
-      userId: existingUser?.id,
-    });
+    return this.create({ ...dto, ownerId, userId: existingUser?.id });
   }
 
-  async getById(id: string, ownerId: string, role: string): Promise<Tenant> {
+  /** Get a tenant with full relation details, enforcing ownership for non-admins. */
+  async getByIdWithDetails(id: string, ownerId: string, role: string): Promise<Tenant> {
     const tenant = await this.repository.findByIdWithRelations(id);
     if (!tenant) throw new NotFoundException('Locataire introuvable.');
-    if (role !== 'ADMIN' && (tenant as never as { ownerId: string }).ownerId !== ownerId) {
+    if (role !== 'ADMIN' && tenant.ownerId !== ownerId) {
       throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
     }
     return tenant;
   }
 
-  async update(id: string, ownerId: string, role: string, dto: UpdateTenantDto): Promise<Tenant> {
-    await this.getById(id, ownerId, role);
-    return this.repository.update(id, dto as never);
+  /** Update a tenant, enforcing ownership for non-admins. */
+  async updateTenant(id: string, ownerId: string, role: string, dto: UpdateTenantDto): Promise<Tenant> {
+    const tenant = await this.findByIdOrThrow(id);
+    if (role !== 'ADMIN' && tenant.ownerId !== ownerId) {
+      throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
+    }
+    return this.repository.update(id, dto as Partial<TenantCreateData>);
   }
+
+  // ── Applications ─────────────────────────────────────────────────────────────
 
   async createApplication(propertySlug: string, dto: CreateApplicationDto): Promise<Application> {
     const property = await this.repository.findPropertyBySlug(propertySlug);
     if (!property) throw new NotFoundException('Bien introuvable.');
 
-    const tenant = dto.tenantId ? await this.repository.findById(dto.tenantId) : null;
+    const tenant = dto.tenantId ? await this.findById(dto.tenantId) : null;
 
     const application = await this.repository.createApplication({
       propertyId: property.id,
@@ -84,6 +84,8 @@ export class TenantsService {
     await this.repository.findApplicationByIdOrThrow(applicationId, propertyId);
     return this.repository.updateApplicationStatus(applicationId, dto.status);
   }
+
+  // ── Tenant self-service ──────────────────────────────────────────────────────
 
   async getMyPayments(userId: string): Promise<{ data: unknown[] }> {
     const tenant = await this.repository.findByUserId(userId);

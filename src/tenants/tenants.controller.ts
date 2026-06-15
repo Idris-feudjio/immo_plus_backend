@@ -14,6 +14,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import { TurnstileGuard } from '../common/guards/turnstile.guard.js';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import {
@@ -31,19 +32,39 @@ export class TenantsController {
 
   @Get()
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: 'Liste des locataires' })
+  @ApiOperation({ summary: 'Liste des locataires avec contrat actif' })
   list(
     @CurrentUser() user: AuthUser,
     @Query() query: { search?: string; page?: number; limit?: number },
   ) {
-    return this.service.list(user.id, user.role, query);
+    const { page = 1, limit = 20, search } = query;
+    const baseWhere = user.role !== Role.ADMIN ? { ownerId: user.id } : {};
+    return this.service.findWithPagination(
+      { searchKey: search, pageNumber: page - 1, pageSize: limit, sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }] },
+      baseWhere,
+    );
+  }
+
+  @Post('search')
+  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: 'Recherche paginée de locataires' })
+  findWithPagination(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+    const baseWhere = user.role !== Role.ADMIN ? { ownerId: user.id } : {};
+    return this.service.findWithPagination(body, baseWhere);
+  }
+
+  @Post('search/all')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Liste complète des locataires sans pagination (admin)' })
+  findAll(@Body() body: PaginationDto) {
+    return this.service.findAll(body);
   }
 
   @Post()
   @Roles(Role.OWNER, Role.MANAGER)
   @ApiOperation({ summary: 'Créer un locataire' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTenantDto) {
-    return this.service.create(user.id, dto);
+    return this.service.createTenant(user.id, dto);
   }
 
   @Get('me/payments')
@@ -55,9 +76,9 @@ export class TenantsController {
 
   @Get(':id')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: "Détail d'un locataire" })
+  @ApiOperation({ summary: "Détail d'un locataire avec historique" })
   getOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.service.getById(id, user.id, user.role);
+    return this.service.getByIdWithDetails(id, user.id, user.role);
   }
 
   @Patch(':id')
@@ -68,7 +89,7 @@ export class TenantsController {
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateTenantDto,
   ) {
-    return this.service.update(id, user.id, user.role, dto);
+    return this.service.updateTenant(id, user.id, user.role, dto);
   }
 }
 

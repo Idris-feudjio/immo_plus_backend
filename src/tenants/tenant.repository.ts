@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Application, ApplicationStatus, ContractStatus, Property, Tenant } from '@prisma/client';
 import {
   BaseRepository,
@@ -8,7 +8,6 @@ import type { PaginatedResult } from '../common/interfaces/paginated-result.inte
 import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateApplicationDto, CreateTenantDto } from './dto/tenant.dto';
 
 export type TenantCreateData = {
   firstName: string;
@@ -38,28 +37,23 @@ export class TenantRepository extends BaseRepository<Tenant, TenantCreateData> {
     );
   }
 
-  /** Paginated tenants with active contract info. */
-  async findListPaginated(
-    ownerId: string,
-    role: string,
-    query: { search?: string; page?: number; limit?: number },
+  /** Paginated tenants with their active contract — role-based scope is passed as baseWhere by the service. */
+  override async findWithPagination(
+    request: SearchRequest,
+    baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Tenant>> {
-    const { page = 1, limit = 20, search } = query;
-    const baseWhere = role !== 'ADMIN' ? { ownerId } : {};
-
-    const request: SearchRequest = {
-      searchKey: search,
-      pageNumber: page - 1,
-      pageSize: limit,
-      sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }],
-    };
-
+    const pageNumber = request.pageNumber ?? 0;
+    const pageSize = request.pageSize ?? 20;
     const where = this.buildSearchWhere(request, baseWhere);
+    const orderBy = this.buildSearchOrderBy(
+      request.sortClauses ?? [{ fieldName: 'createdAt', direction: 'DESC' }],
+    );
+
     const [data, total] = await Promise.all([
       this.prisma.tenant.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
+        skip: pageNumber * pageSize,
+        take: pageSize,
         include: {
           contracts: {
             where: { status: ContractStatus.ACTIVE },
@@ -67,14 +61,15 @@ export class TenantRepository extends BaseRepository<Tenant, TenantCreateData> {
             include: { property: { select: { title: true } } },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: orderBy.length ? orderBy : { createdAt: 'desc' },
       }),
       this.prisma.tenant.count({ where }),
     ]);
 
-    return { data: data as Tenant[], meta: buildMeta(total, page - 1, limit) };
+    return { data: data as unknown as Tenant[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
+  /** Full detail view with contract history and recent payments. */
   findByIdWithRelations(id: string): Promise<Tenant | null> {
     return this.prisma.tenant.findUnique({
       where: { id },
