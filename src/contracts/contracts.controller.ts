@@ -36,7 +36,7 @@ export class ContractsController {
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Créer un contrat' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateContractDto) {
-    return this.service.create(user.id, user.role, dto);
+    return this.service.createContract(user.id, user.role, dto);
   }
 
   @Get(':id')

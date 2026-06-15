@@ -1,10 +1,9 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   Payment,
   PaymentMethod,
   PaymentStatus,
   Prisma,
-  Role,
 } from '@prisma/client';
 import {
   BaseRepository,
@@ -14,7 +13,6 @@ import type { PaginatedResult } from '../common/interfaces/paginated-result.inte
 import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { FilterPaymentsDto, SendRemindersDto } from './dto/payment.dto';
 
 export type PaymentCreateData = {
   contractId: string;
@@ -52,30 +50,29 @@ export class PaymentRepository extends BaseRepository<Payment, PaymentCreateData
     );
   }
 
-  /** Paginated list with role-based scoping. */
-  async findListPaginated(
-    userId: string,
-    role: string,
-    query: FilterPaymentsDto,
+  override async findWithPagination(
+    request: SearchRequest,
+    baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Payment>> {
-    const { page = 1, limit = 20 } = query;
-    const where = await this.buildOwnerWhere(userId, role, query);
-
-    const orderBy: Prisma.PaymentOrderByWithRelationInput =
-      query.sort === 'dueDate' ? { dueDate: 'asc' } : { dueDate: 'desc' };
+    const pageNumber = request.pageNumber ?? 0;
+    const pageSize = request.pageSize ?? 20;
+    const where = this.buildSearchWhere(request, baseWhere);
+    const orderBy = this.buildSearchOrderBy(
+      request.sortClauses ?? [{ fieldName: 'dueDate', direction: 'DESC' }],
+    );
 
     const [data, total] = await Promise.all([
       this.prisma.payment.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
+        skip: pageNumber * pageSize,
+        take: pageSize,
         include: PAYMENT_INCLUDE,
-        orderBy,
+        orderBy: orderBy.length ? orderBy : { dueDate: 'desc' },
       }),
       this.prisma.payment.count({ where }),
     ]);
 
-    return { data: data as Payment[], meta: buildMeta(total, page - 1, limit) };
+    return { data: data as unknown as Payment[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
   findByContractAndPeriod(contractId: string, period: string): Promise<Payment | null> {
@@ -108,27 +105,19 @@ export class PaymentRepository extends BaseRepository<Payment, PaymentCreateData
     }) as unknown as Promise<Payment>;
   }
 
-  async findPaymentWithPropertyOrThrow(id: string, userId: string, role: string): Promise<Payment> {
-    const payment = await this.prisma.payment.findUnique({
+  findPaymentWithProperty(id: string): Promise<Payment | null> {
+    return this.prisma.payment.findUnique({
       where: { id },
       include: PAYMENT_INCLUDE,
-    });
-    if (!payment) throw new NotFoundException('Paiement introuvable.');
-
-    if (role !== Role.ADMIN) {
-      const prop = (payment as never as { property: { ownerId: string; managerId: string | null } }).property;
-      if (prop.ownerId !== userId && prop.managerId !== userId) {
-        throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-      }
-    }
-    return payment;
+    }) as unknown as Promise<Payment | null>;
   }
 
-  async findOverdue(userId: string, role: string): Promise<Payment[]> {
-    const where = await this.buildOwnerWhere(userId, role, {});
-    (where as Record<string, unknown>).status = PaymentStatus.PENDING;
-    (where as Record<string, unknown>).dueDate = { lt: new Date() };
-
+  async findOverdue(baseWhere: Record<string, unknown>): Promise<Payment[]> {
+    const where = {
+      ...baseWhere,
+      status: PaymentStatus.PENDING,
+      dueDate: { lt: new Date() },
+    };
     return this.prisma.payment.findMany({
       where,
       include: PAYMENT_INCLUDE,
@@ -136,20 +125,20 @@ export class PaymentRepository extends BaseRepository<Payment, PaymentCreateData
     }) as unknown as Payment[];
   }
 
-  async findForReminders(userId: string, role: string, paymentIds: string[]): Promise<Payment[]> {
-    const where = await this.buildOwnerWhere(userId, role, {});
-    (where as Record<string, unknown>).id = { in: paymentIds };
-    (where as Record<string, unknown>).status = { in: [PaymentStatus.PENDING, PaymentStatus.LATE] };
-
+  async findForReminders(baseWhere: Record<string, unknown>, paymentIds: string[]): Promise<Payment[]> {
+    const where = {
+      ...baseWhere,
+      id: { in: paymentIds },
+      status: { in: [PaymentStatus.PENDING, PaymentStatus.LATE] },
+    };
     return this.prisma.payment.findMany({ where });
   }
 
   async aggregateStats(
-    userId: string,
-    role: string,
+    baseWhere: Record<string, unknown>,
     query: { year?: number; month?: number; propertyId?: string },
   ) {
-    const where = await this.buildOwnerWhere(userId, role, {});
+    const where = { ...baseWhere };
     if (query.propertyId) (where as Record<string, unknown>).propertyId = query.propertyId;
     if (query.year) {
       const start = new Date(query.year, (query.month ?? 1) - 1, 1);
@@ -178,36 +167,5 @@ export class PaymentRepository extends BaseRepository<Payment, PaymentCreateData
 
   findTenantByUserId(userId: string) {
     return this.prisma.tenant.findFirst({ where: { userId } });
-  }
-
-  // ── Private helpers ──────────────────────────────────────────────────────
-
-  async buildOwnerWhere(
-    userId: string,
-    role: string,
-    filters: Partial<FilterPaymentsDto>,
-  ): Promise<Record<string, unknown>> {
-    const where: Record<string, unknown> = {};
-
-    if (role === Role.TENANT) {
-      const tenant = await this.prisma.tenant.findFirst({ where: { userId } });
-      where.tenantId = tenant ? tenant.id : 'never';
-    } else if (role !== Role.ADMIN) {
-      where.property = { ownerId: userId };
-    }
-
-    if (filters.contractId) where.contractId = filters.contractId;
-    if (filters.tenantId) where.tenantId = filters.tenantId;
-    if (filters.propertyId) where.propertyId = filters.propertyId;
-    if (filters.status) where.status = filters.status;
-    if (filters.period) where.period = filters.period;
-    if (filters.startDate || filters.endDate) {
-      where.dueDate = {
-        gte: filters.startDate ? new Date(filters.startDate) : undefined,
-        lte: filters.endDate ? new Date(filters.endDate) : undefined,
-      };
-    }
-
-    return where;
   }
 }

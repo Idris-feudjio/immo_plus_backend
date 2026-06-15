@@ -63,7 +63,7 @@ export class PropertiesController {
   @CacheEvict({ key: 'properties' })
   @ApiOperation({ summary: 'Créer un bien' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePropertyDto) {
-    return this.service.create(user.id, dto);
+    return this.service.createProperty(user.id, dto);
   }
 
   @Patch(':id')
@@ -75,7 +75,7 @@ export class PropertiesController {
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdatePropertyDto,
   ) {
-    return this.service.update(id, user.id, user.role, dto);
+    return this.service.updateProperty(id, user.id, user.role, dto);
   }
 
   @Patch(':id/publish')

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Mandate, MandateStatus, Role } from '@prisma/client';
+import { Mandate, MandateStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
@@ -111,6 +111,14 @@ export class MandatesService {
   }
 
   list(userId: string, role: string, query: ListMandatesDto): Promise<PaginatedResult<Mandate>> {
-    return this.repository.findListPaginated(userId, role, query);
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 10));
+    const where: Prisma.MandateWhereInput = { deletedAt: null };
+    if (role === Role.OWNER) where.property = { ownerId: userId };
+    else if (role === Role.MANAGER) where.managerId = userId;
+    if (query.status) where.status = query.status;
+    if (query.propertyId) where.propertyId = query.propertyId;
+    if (query.agencyId) where.agencyId = query.agencyId;
+    return this.repository.findPaginated(where, page, limit);
   }
 }

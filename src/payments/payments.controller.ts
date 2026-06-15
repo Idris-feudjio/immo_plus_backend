@@ -37,14 +37,14 @@ export class PaymentsController {
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Enregistrer un paiement' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePaymentDto) {
-    return this.service.create(user.id, user.role, dto);
+    return this.service.createPayment(user.id, user.role, dto);
   }
 
   @Patch(':id')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Modifier un paiement' })
   update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdatePaymentDto) {
-    return this.service.update(id, user.id, user.role, dto);
+    return this.service.updatePayment(id, user.id, user.role, dto);
   }
 
   @Get('overdue')

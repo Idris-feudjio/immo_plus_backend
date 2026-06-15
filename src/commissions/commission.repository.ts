@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Commission, Prisma, Role } from '@prisma/client';
+import { Commission, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { FilterCommissionsDto } from './dto/commission.dto';
 
 @Injectable()
 export class CommissionRepository {
@@ -48,39 +47,16 @@ export class CommissionRepository {
     return this.prisma.commission.update({ where: { id }, data });
   }
 
-  async findListPaginated(
-    userId: string,
-    role: string,
-    query: FilterCommissionsDto,
+  async findPaginated(
+    baseWhere: Prisma.CommissionWhereInput,
+    page: number,
+    limit: number,
   ): Promise<PaginatedResult<Commission>> {
-    const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 10));
     const skip = (page - 1) * limit;
-
-    const where: Prisma.CommissionWhereInput = {};
-
-    if (role === Role.MANAGER) {
-      const memberships = await this.prisma.agencyMember.findMany({
-        where: { userId },
-        select: { agencyId: true },
-      });
-      where.agencyId = { in: memberships.map((m) => m.agencyId) };
-    }
-
-    if (query.status) where.status = query.status;
-    if (query.type) where.type = query.type;
-    if (query.agencyId) where.agencyId = query.agencyId;
-    if (query.contractId) where.contractId = query.contractId;
-    if (query.dateFrom || query.dateTo) {
-      const dateFilter: Prisma.DateTimeFilter = {};
-      if (query.dateFrom) dateFilter.gte = new Date(query.dateFrom);
-      if (query.dateTo) dateFilter.lte = new Date(query.dateTo);
-      where.createdAt = dateFilter;
-    }
 
     const [data, total] = await Promise.all([
       this.prisma.commission.findMany({
-        where,
+        where: baseWhere,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -90,7 +66,7 @@ export class CommissionRepository {
           contract: { include: { property: true } },
         },
       }),
-      this.prisma.commission.count({ where }),
+      this.prisma.commission.count({ where: baseWhere }),
     ]);
 
     return {

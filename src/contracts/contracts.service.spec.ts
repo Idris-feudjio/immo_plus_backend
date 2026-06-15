@@ -5,11 +5,11 @@ import { ContractsService } from './contracts.service';
 
 function mockRepo() {
   return {
-    findListPaginated: jest.fn(),
     findByIdWithDetails: jest.fn(),
     findPropertyForContract: jest.fn(),
     findActiveContractForProperty: jest.fn(),
-    assertAccess: jest.fn().mockResolvedValue(undefined),
+    findPropertyById: jest.fn().mockResolvedValue({ ownerId: 'user-1', managerId: null }),
+    findTenantByUserId: jest.fn(),
     findByIdForPdf: jest.fn(),
     updatePdfUrl: jest.fn(),
   };

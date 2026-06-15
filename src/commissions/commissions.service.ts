@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Commission, CommissionStatus, Role } from '@prisma/client';
+import { Commission, CommissionStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PdfService } from '../common/services/pdf.service';
@@ -235,8 +235,31 @@ export class CommissionsService {
   }
 
   // Story 8.5: Paginated list (MANAGER → own agency, ADMIN → all)
-  list(userId: string, role: string, query: FilterCommissionsDto): Promise<PaginatedResult<Commission>> {
-    return this.repository.findListPaginated(userId, role, query);
+  async list(userId: string, role: string, query: FilterCommissionsDto): Promise<PaginatedResult<Commission>> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 10));
+    const where: Prisma.CommissionWhereInput = {};
+
+    if (role === Role.MANAGER) {
+      const memberships = await this.prisma.agencyMember.findMany({
+        where: { userId },
+        select: { agencyId: true },
+      });
+      where.agencyId = { in: memberships.map((m) => m.agencyId) };
+    }
+
+    if (query.status) where.status = query.status;
+    if (query.type) where.type = query.type;
+    if (query.agencyId) where.agencyId = query.agencyId;
+    if (query.contractId) where.contractId = query.contractId;
+    if (query.dateFrom || query.dateTo) {
+      const dateFilter: Prisma.DateTimeFilter = {};
+      if (query.dateFrom) dateFilter.gte = new Date(query.dateFrom);
+      if (query.dateTo) dateFilter.lte = new Date(query.dateTo);
+      where.createdAt = dateFilter;
+    }
+
+    return this.repository.findPaginated(where, page, limit);
   }
 
   // Story 8.5: Dashboard with Redis cache (TTL 5min)

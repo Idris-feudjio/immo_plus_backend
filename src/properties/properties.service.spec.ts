@@ -98,7 +98,7 @@ describe('PropertiesService', () => {
       const created = baseProperty({ title: 'Belle villa', price: 300000 });
       repo.create.mockResolvedValue(created);
 
-      const result = await service.create(OWNER_ID, dto as never);
+      const result = await service.createProperty(OWNER_ID, dto as never);
 
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -226,7 +226,7 @@ describe('PropertiesService', () => {
       repo.findByIdActive.mockResolvedValue(null);
 
       await expect(
-        service.update(PROP_ID, OWNER_ID, Role.OWNER, {}),
+        service.updateProperty(PROP_ID, OWNER_ID, Role.OWNER, {}),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -234,7 +234,7 @@ describe('PropertiesService', () => {
       repo.findByIdActive.mockResolvedValue(baseProperty({ ownerId: 'other-owner' }));
 
       await expect(
-        service.update(PROP_ID, OWNER_ID, Role.OWNER, {}),
+        service.updateProperty(PROP_ID, OWNER_ID, Role.OWNER, {}),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -242,7 +242,7 @@ describe('PropertiesService', () => {
       repo.findByIdActive.mockResolvedValue(baseProperty({ ownerId: 'other-owner' }));
       repo.update.mockResolvedValue(baseProperty({ title: 'Updated' }));
 
-      const result = await service.update(PROP_ID, 'admin-id', Role.ADMIN, { title: 'Updated' });
+      const result = await service.updateProperty(PROP_ID, 'admin-id', Role.ADMIN, { title: 'Updated' });
 
       expect(repo.update).toHaveBeenCalled();
       expect(result.title).toBe('Updated');

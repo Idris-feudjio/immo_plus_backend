@@ -1,11 +1,8 @@
-import { Injectable, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   Contract,
   ContractStatus,
-  PaymentStatus,
   Property,
-  PropertyStatus,
-  Role,
   Tenant,
   Prisma,
 } from '@prisma/client';
@@ -17,7 +14,6 @@ import type { PaginatedResult } from '../common/interfaces/paginated-result.inte
 import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { FilterContractsDto } from './dto/contract.dto';
 
 export type ContractCreateData = {
   propertyId: string;
@@ -52,30 +48,29 @@ export class ContractRepository extends BaseRepository<Contract, ContractCreateD
     );
   }
 
-  /** Paginated list with role-based scoping. */
-  async findListPaginated(
-    userId: string,
-    role: string,
-    query: FilterContractsDto,
+  override async findWithPagination(
+    request: SearchRequest,
+    baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Contract>> {
-    const { page = 1, limit = 20 } = query;
-    const baseWhere = await this.buildRoleWhere(userId, role);
-    if (query.status) baseWhere.status = query.status;
-    if (query.propertyId) baseWhere.propertyId = query.propertyId;
-    if (query.tenantId) baseWhere.tenantId = query.tenantId;
+    const pageNumber = request.pageNumber ?? 0;
+    const pageSize = request.pageSize ?? 20;
+    const where = this.buildSearchWhere(request, baseWhere);
+    const orderBy = this.buildSearchOrderBy(
+      request.sortClauses ?? [{ fieldName: 'createdAt', direction: 'DESC' }],
+    );
 
     const [data, total] = await Promise.all([
       this.prisma.contract.findMany({
-        where: baseWhere,
-        skip: (page - 1) * limit,
-        take: limit,
+        where,
+        skip: pageNumber * pageSize,
+        take: pageSize,
         include: CONTRACT_LIST_INCLUDE,
-        orderBy: { createdAt: 'desc' },
+        orderBy: orderBy.length ? orderBy : { createdAt: 'desc' },
       }),
-      this.prisma.contract.count({ where: baseWhere }),
+      this.prisma.contract.count({ where }),
     ]);
 
-    return { data: data as Contract[], meta: buildMeta(total, page - 1, limit) };
+    return { data: data as unknown as Contract[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
   findByIdWithDetails(id: string): Promise<Contract | null> {
@@ -137,36 +132,4 @@ export class ContractRepository extends BaseRepository<Contract, ContractCreateD
     return this.prisma.contract.update({ where: { id }, data: { pdfUrl } });
   }
 
-  /** Verify access and return the contract, throws if no access. */
-  async assertAccess(contract: Contract, userId: string, role: string): Promise<void> {
-    if (role === Role.ADMIN) return;
-    if (role === Role.TENANT) {
-      const tenant = await this.findTenantByUserId(userId);
-      if (!tenant || tenant.id !== (contract as never as { tenantId: string }).tenantId) {
-        throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-      }
-      return;
-    }
-    const property = await this.findPropertyById((contract as never as { propertyId: string }).propertyId);
-    if (!property || (property.ownerId !== userId && property.managerId !== userId)) {
-      throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
-    }
-  }
-
-  // ── Private helpers ──────────────────────────────────────────────────────
-
-  private async buildRoleWhere(
-    userId: string,
-    role: string,
-  ): Promise<Record<string, unknown>> {
-    const where: Record<string, unknown> = {};
-    if (role === Role.TENANT) {
-      const tenant = await this.findTenantByUserId(userId);
-      if (tenant) where.tenantId = tenant.id;
-      else where.id = 'never';
-    } else if (role !== Role.ADMIN) {
-      where.property = { ownerId: userId };
-    }
-    return where;
-  }
 }

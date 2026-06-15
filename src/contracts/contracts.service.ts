@@ -12,7 +12,9 @@ import {
   PropertyStatus,
   Role,
 } from '@prisma/client';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { SearchRequest } from '../common/interfaces/search-request.interface';
 import { PdfService } from '../common/services/pdf.service';
 import { StorageService } from '../storage/storage.service';
 import { UnitOfWorkService } from '../database/unit-of-work.service';
@@ -22,24 +24,34 @@ import {
   RenewContractDto,
   TerminateContractDto,
 } from './dto/contract.dto';
-import { ContractRepository } from './contract.repository';
+import { ContractCreateData, ContractRepository } from './contract.repository';
 
 const TVA_RATE = 19.25;
 
 @Injectable()
-export class ContractsService {
+export class ContractsService extends BaseService<Contract, ContractCreateData> {
   constructor(
-    private readonly repository: ContractRepository,
+    protected override readonly repository: ContractRepository,
     private readonly uow: UnitOfWorkService,
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
-  ) {}
-
-  list(userId: string, role: string, query: FilterContractsDto): Promise<PaginatedResult<Contract>> {
-    return this.repository.findListPaginated(userId, role, query);
+  ) {
+    super(repository);
   }
 
-  async create(userId: string, role: string, dto: CreateContractDto): Promise<Contract> {
+  async list(userId: string, role: string, query: FilterContractsDto): Promise<PaginatedResult<Contract>> {
+    const baseWhere = await this.buildRoleWhere(userId, role);
+    if (query.status) baseWhere.status = query.status;
+    if (query.propertyId) baseWhere.propertyId = query.propertyId;
+    if (query.tenantId) baseWhere.tenantId = query.tenantId;
+    const { page = 1, limit = 20 } = query;
+    return this.findWithPagination(
+      { pageNumber: page - 1, pageSize: limit, sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }] },
+      baseWhere,
+    );
+  }
+
+  async createContract(userId: string, role: string, dto: CreateContractDto): Promise<Contract> {
     const property = await this.repository.findPropertyForContract(dto.propertyId);
     if (!property) throw new NotFoundException('Bien introuvable.');
 
@@ -101,7 +113,7 @@ export class ContractsService {
   async getById(id: string, userId: string, role: string): Promise<Contract> {
     const contract = await this.repository.findByIdWithDetails(id);
     if (!contract) throw new NotFoundException('Contrat introuvable.');
-    await this.repository.assertAccess(contract, userId, role);
+    await this.checkAccess(contract, userId, role);
     return contract;
   }
 
@@ -240,6 +252,33 @@ export class ContractsService {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private async checkAccess(contract: Contract, userId: string, role: string): Promise<void> {
+    if (role === Role.ADMIN) return;
+    if (role === Role.TENANT) {
+      const tenant = await this.repository.findTenantByUserId(userId);
+      if (!tenant || tenant.id !== (contract as never as { tenantId: string }).tenantId) {
+        throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
+      }
+      return;
+    }
+    const property = await this.repository.findPropertyById((contract as never as { propertyId: string }).propertyId);
+    if (!property || (property.ownerId !== userId && property.managerId !== userId)) {
+      throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
+    }
+  }
+
+  private async buildRoleWhere(userId: string, role: string): Promise<Record<string, unknown>> {
+    const where: Record<string, unknown> = {};
+    if (role === Role.TENANT) {
+      const tenant = await this.repository.findTenantByUserId(userId);
+      if (tenant) where.tenantId = tenant.id;
+      else where.id = 'never';
+    } else if (role !== Role.ADMIN) {
+      where.property = { ownerId: userId };
+    }
+    return where;
+  }
 
   private buildPaymentSchedule(
     contractId: string,

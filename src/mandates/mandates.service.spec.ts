@@ -14,7 +14,7 @@ function mockRepository() {
     create: jest.fn(),
     updateStatus: jest.fn(),
     findDuplicate: jest.fn().mockResolvedValue(null),
-    findListPaginated: jest.fn(),
+    findPaginated: jest.fn(),
     findActiveByManager: jest.fn(),
   };
 }
@@ -219,13 +219,17 @@ describe('MandatesService', () => {
   // ── list ──────────────────────────────────────────────────────────────────
 
   describe('list', () => {
-    it('delegates to repository.findListPaginated', async () => {
+    it('delegates to repository.findPaginated with role-scoped where clause', async () => {
       const mockResult = { data: [MANDATE_STUB], meta: { total: 1, pageNumber: 0, pageSize: 10, totalPages: 1 } };
-      repository.findListPaginated.mockResolvedValue(mockResult);
+      repository.findPaginated.mockResolvedValue(mockResult);
 
       const result = await service.list('user-1', Role.MANAGER, { page: 1 });
 
-      expect(repository.findListPaginated).toHaveBeenCalledWith('user-1', Role.MANAGER, { page: 1 });
+      expect(repository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ managerId: 'user-1', deletedAt: null }),
+        1,
+        10,
+      );
       expect(result).toEqual(mockResult);
     });
   });

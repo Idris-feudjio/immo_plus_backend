@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CommissionCategory, CommissionStatus, Payment, PaymentStatus, Role } from '@prisma/client';
+import { BaseService } from '../common/abstractions/base.service';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationRepository } from '../notifications/notification.repository';
@@ -11,45 +12,40 @@ import {
   SendRemindersDto,
   UpdatePaymentDto,
 } from './dto/payment.dto';
-import { PaymentRepository } from './payment.repository';
+import { PaymentCreateData, PaymentRepository } from './payment.repository';
 
 @Injectable()
-export class PaymentsService {
+export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
   constructor(
-    private readonly repository: PaymentRepository,
+    protected override readonly repository: PaymentRepository,
     private readonly storage: StorageService,
     private readonly prisma: PrismaService,
     private readonly notificationRepo: NotificationRepository,
     private readonly emailQueue: EmailQueueService,
-  ) {}
-
-  list(userId: string, role: string, query: FilterPaymentsDto): Promise<PaginatedResult<Payment>> {
-    return this.repository.findListPaginated(userId, role, query);
+  ) {
+    super(repository);
   }
 
-  async create(userId: string, role: string, dto: CreatePaymentDto): Promise<Payment> {
+  async list(userId: string, role: string, query: FilterPaymentsDto): Promise<PaginatedResult<Payment>> {
+    const baseWhere = await this.buildOwnerWhere(userId, role, query);
+    const { page = 1, limit = 20 } = query;
+    const sortClauses = query.sort === 'dueDate'
+      ? [{ fieldName: 'dueDate', direction: 'ASC' as const }]
+      : [{ fieldName: 'dueDate', direction: 'DESC' as const }];
+    return this.findWithPagination({ pageNumber: page - 1, pageSize: limit, sortClauses }, baseWhere);
+  }
+
+  async createPayment(userId: string, role: string, dto: CreatePaymentDto): Promise<Payment> {
     const contractWithProp = await this.repository.findContractWithProperty(dto.contractId);
     if (!contractWithProp) throw new NotFoundException('Contrat introuvable.');
 
     const property = (contractWithProp as never as { property: { ownerId: string; managerId: string | null } }).property;
 
-    // Re-use assertAccess pattern via repository
-    await this.repository.findPaymentWithPropertyOrThrow(
-      // Need a payment id to assert access — for creation, check manually
-      '' as never,
-      userId,
-      role,
-    ).catch(() => {
-      // On creation we check the property directly
-    });
-
-    // Simplified access check for create
     if (role !== 'ADMIN' && property.ownerId !== userId && property.managerId !== userId) {
       throw new NotFoundException('Droits insuffisants.');
     }
 
     const existing = await this.repository.findByContractAndPeriod(dto.contractId, dto.period);
-
     const isNew = !existing;
 
     const payment = await this.repository.createOrUpdate(
@@ -75,7 +71,6 @@ export class PaymentsService {
       },
     );
 
-    // Auto-generate commissions for new paid payments
     if (isNew && dto.status === PaymentStatus.PAID) {
       const propertyId = (contractWithProp as never as { propertyId: string }).propertyId;
       await this.generateCommissions(propertyId, dto.amount, payment.id, (contractWithProp as never as { id: string }).id);
@@ -160,13 +155,21 @@ export class PaymentsService {
     }
   }
 
-  async update(id: string, userId: string, role: string, dto: UpdatePaymentDto): Promise<Payment> {
-    await this.repository.findPaymentWithPropertyOrThrow(id, userId, role);
+  async updatePayment(id: string, userId: string, role: string, dto: UpdatePaymentDto): Promise<Payment> {
+    const payment = await this.repository.findPaymentWithProperty(id);
+    if (!payment) throw new NotFoundException('Paiement introuvable.');
+    if (role !== Role.ADMIN) {
+      const prop = (payment as never as { property: { ownerId: string; managerId: string | null } }).property;
+      if (prop.ownerId !== userId && prop.managerId !== userId) {
+        throw new ForbiddenException({ error: 'INSUFFICIENT_PERMISSIONS', message: 'Droits insuffisants.' });
+      }
+    }
     return this.repository.updateWithInclude(id, dto as never);
   }
 
   async getOverdue(userId: string, role: string): Promise<{ data: Payment[] }> {
-    const data = await this.repository.findOverdue(userId, role);
+    const baseWhere = await this.buildOwnerWhere(userId, role, {});
+    const data = await this.repository.findOverdue(baseWhere);
     return { data };
   }
 
@@ -175,7 +178,8 @@ export class PaymentsService {
     role: string,
     dto: SendRemindersDto,
   ): Promise<{ sent: number; channel: string }> {
-    const payments = await this.repository.findForReminders(userId, role, dto.paymentIds);
+    const baseWhere = await this.buildOwnerWhere(userId, role, {});
+    const payments = await this.repository.findForReminders(baseWhere, dto.paymentIds);
     // TODO: send actual reminders via BullMQ queue
     console.log(`Sending ${dto.channel} reminders for ${payments.length} payments`);
     return { sent: payments.length, channel: dto.channel };
@@ -186,7 +190,8 @@ export class PaymentsService {
     role: string,
     query: { year?: number; month?: number; propertyId?: string },
   ) {
-    const { paid, pending, late } = await this.repository.aggregateStats(userId, role, query);
+    const baseWhere = await this.buildOwnerWhere(userId, role, {});
+    const { paid, pending, late } = await this.repository.aggregateStats(baseWhere, query);
 
     const totalCollected = paid._sum.amount ?? 0;
     const totalPending = pending._sum.amount ?? 0;
@@ -216,12 +221,50 @@ export class PaymentsService {
       return { receiptUrl: await this.storage.getSignedUrl(key, 3600) };
     }
 
-    await this.repository.findPaymentWithPropertyOrThrow(id, userId, role);
-    const payment = await this.repository.findPaymentById(id);
+    const payment = await this.repository.findPaymentWithProperty(id);
     if (!payment) throw new NotFoundException('Paiement introuvable.');
-    if (payment.status !== PaymentStatus.PAID) throw new ConflictException('PAYMENT_NOT_PAID');
-    if (!payment.receiptUrl) throw new NotFoundException('Quittance non disponible.');
-    const key = this.storage.keyFromUrl(payment.receiptUrl);
+    if (role !== Role.ADMIN) {
+      const prop = (payment as never as { property: { ownerId: string; managerId: string | null } }).property;
+      if (prop.ownerId !== userId && prop.managerId !== userId) {
+        throw new ForbiddenException('Droits insuffisants.');
+      }
+    }
+    const p = await this.repository.findPaymentById(id);
+    if (!p) throw new NotFoundException('Paiement introuvable.');
+    if (p.status !== PaymentStatus.PAID) throw new ConflictException('PAYMENT_NOT_PAID');
+    if (!p.receiptUrl) throw new NotFoundException('Quittance non disponible.');
+    const key = this.storage.keyFromUrl(p.receiptUrl);
     return { receiptUrl: await this.storage.getSignedUrl(key, 3600) };
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────────
+
+  private async buildOwnerWhere(
+    userId: string,
+    role: string,
+    filters: Partial<FilterPaymentsDto>,
+  ): Promise<Record<string, unknown>> {
+    const where: Record<string, unknown> = {};
+
+    if (role === Role.TENANT) {
+      const tenant = await this.repository.findTenantByUserId(userId);
+      where.tenantId = tenant ? tenant.id : 'never';
+    } else if (role !== Role.ADMIN) {
+      where.property = { ownerId: userId };
+    }
+
+    if (filters.contractId) where.contractId = filters.contractId;
+    if (filters.tenantId) where.tenantId = filters.tenantId;
+    if (filters.propertyId) where.propertyId = filters.propertyId;
+    if (filters.status) where.status = filters.status;
+    if (filters.period) where.period = filters.period;
+    if (filters.startDate || filters.endDate) {
+      where.dueDate = {
+        gte: filters.startDate ? new Date(filters.startDate) : undefined,
+        lte: filters.endDate ? new Date(filters.endDate) : undefined,
+      };
+    }
+
+    return where;
   }
 }

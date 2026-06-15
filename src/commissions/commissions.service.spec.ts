@@ -9,7 +9,7 @@ function mockRepository() {
     findById: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
-    findListPaginated: jest.fn(),
+    findPaginated: jest.fn(),
     getDashboardStats: jest.fn(),
     getOwnerDue: jest.fn(),
   };
@@ -22,7 +22,7 @@ function mockPrisma() {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
     },
-    agencyMember: { findFirst: jest.fn() },
+    agencyMember: { findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
   };
 }
 
@@ -357,13 +357,18 @@ describe('CommissionsService', () => {
       meta: { total: 1, pageNumber: 0, pageSize: 10, totalPages: 1 },
     };
 
-    it('delegates to repository', async () => {
-      repository.findListPaginated.mockResolvedValue(PAGINATED);
+    it('delegates to repository with role-scoped where clause', async () => {
+      prisma.agencyMember.findMany.mockResolvedValue([{ agencyId: 'agency-1' }]);
+      repository.findPaginated.mockResolvedValue(PAGINATED);
 
       const result = await service.list('manager-1', Role.MANAGER, {});
 
       expect(result).toEqual(PAGINATED);
-      expect(repository.findListPaginated).toHaveBeenCalledWith('manager-1', Role.MANAGER, {});
+      expect(repository.findPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ agencyId: { in: ['agency-1'] } }),
+        1,
+        10,
+      );
     });
   });
 

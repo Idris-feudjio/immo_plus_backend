@@ -11,6 +11,7 @@ import {
   PropertyStatus,
   Role,
 } from '@prisma/client';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { SearchRequest, SortClause } from '../common/interfaces/search-request.interface';
 import { v4 as uuidv4 } from 'uuid';
@@ -37,8 +38,10 @@ function buildPriceLabel(price: number): string {
 }
 
 @Injectable()
-export class PropertiesService {
-  constructor(private readonly repository: PropertyRepository) {}
+export class PropertiesService extends BaseService<Property, PropertyCreateData> {
+  constructor(protected override readonly repository: PropertyRepository) {
+    super(repository);
+  }
 
   listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {
     return this.repository.findListPaginated(
@@ -72,7 +75,7 @@ export class PropertiesService {
     return property;
   }
 
-  async create(ownerId: string, dto: CreatePropertyDto): Promise<Property> {
+  async createProperty(ownerId: string, dto: CreatePropertyDto): Promise<Property> {
     const slug = `${slugify(dto.title)}-${uuidv4().substring(0, 8)}`;
     return this.repository.create({
       ...dto,
@@ -82,7 +85,7 @@ export class PropertiesService {
     });
   }
 
-  async update(
+  async updateProperty(
     id: string,
     userId: string,
     role: string,

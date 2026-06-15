@@ -7,7 +7,7 @@ import { PaymentsService } from './payments.service';
 function mockRepository() {
   return {
     findPaymentById: jest.fn(),
-    findPaymentWithPropertyOrThrow: jest.fn(),
+    findPaymentWithProperty: jest.fn(),
     findTenantByUserId: jest.fn(),
     findContractWithProperty: jest.fn(),
     findByContractAndPeriod: jest.fn(),
@@ -51,6 +51,7 @@ const PAID_PAYMENT = {
   status: PaymentStatus.PAID,
   tenantId: 'tenant-uuid-1',
   receiptUrl: 'https://cdn.example.com/receipts/pay-1/receipt.pdf',
+  property: { ownerId: 'owner-1', managerId: null },
 };
 
 const PENDING_PAYMENT = {
@@ -58,6 +59,7 @@ const PENDING_PAYMENT = {
   status: PaymentStatus.PENDING,
   tenantId: 'tenant-uuid-1',
   receiptUrl: null,
+  property: { ownerId: 'owner-1', managerId: null },
 };
 
 const PAID_NO_RECEIPT = {
@@ -65,6 +67,7 @@ const PAID_NO_RECEIPT = {
   status: PaymentStatus.PAID,
   tenantId: 'tenant-uuid-1',
   receiptUrl: null,
+  property: { ownerId: 'owner-1', managerId: null },
 };
 
 const TENANT_RECORD = { id: 'tenant-uuid-1', userId: 'user-tenant-1' };
@@ -93,7 +96,7 @@ describe('PaymentsService — getReceiptUrl', () => {
 
   describe('OWNER / ADMIN flow', () => {
     it('returns pre-signed URL for PAID payment', async () => {
-      repo.findPaymentWithPropertyOrThrow.mockResolvedValue(PAID_PAYMENT);
+      repo.findPaymentWithProperty.mockResolvedValue(PAID_PAYMENT);
       repo.findPaymentById.mockResolvedValue(PAID_PAYMENT);
 
       const result = await service.getReceiptUrl('pay-1', 'owner-1', 'OWNER');
@@ -107,7 +110,7 @@ describe('PaymentsService — getReceiptUrl', () => {
     });
 
     it('throws 409 ConflictException when payment is not PAID', async () => {
-      repo.findPaymentWithPropertyOrThrow.mockResolvedValue(PENDING_PAYMENT);
+      repo.findPaymentWithProperty.mockResolvedValue(PENDING_PAYMENT);
       repo.findPaymentById.mockResolvedValue(PENDING_PAYMENT);
 
       await expect(service.getReceiptUrl('pay-2', 'owner-1', 'OWNER')).rejects.toThrow(
@@ -116,7 +119,7 @@ describe('PaymentsService — getReceiptUrl', () => {
     });
 
     it('throws 404 when payment is PAID but receiptUrl is absent', async () => {
-      repo.findPaymentWithPropertyOrThrow.mockResolvedValue(PAID_NO_RECEIPT);
+      repo.findPaymentWithProperty.mockResolvedValue(PAID_NO_RECEIPT);
       repo.findPaymentById.mockResolvedValue(PAID_NO_RECEIPT);
 
       await expect(service.getReceiptUrl('pay-3', 'owner-1', 'OWNER')).rejects.toThrow(
@@ -125,7 +128,7 @@ describe('PaymentsService — getReceiptUrl', () => {
     });
 
     it('throws 404 when findPaymentById returns null (race condition)', async () => {
-      repo.findPaymentWithPropertyOrThrow.mockResolvedValue(PAID_PAYMENT);
+      repo.findPaymentWithProperty.mockResolvedValue(PAID_PAYMENT);
       repo.findPaymentById.mockResolvedValue(null);
 
       await expect(service.getReceiptUrl('pay-1', 'owner-1', 'OWNER')).rejects.toThrow(
@@ -134,7 +137,7 @@ describe('PaymentsService — getReceiptUrl', () => {
     });
 
     it('ADMIN bypasses property ownership check', async () => {
-      repo.findPaymentWithPropertyOrThrow.mockResolvedValue(PAID_PAYMENT);
+      repo.findPaymentWithProperty.mockResolvedValue(PAID_PAYMENT);
       repo.findPaymentById.mockResolvedValue(PAID_PAYMENT);
 
       const result = await service.getReceiptUrl('pay-1', 'admin-1', 'ADMIN');
@@ -151,7 +154,7 @@ describe('PaymentsService — getReceiptUrl', () => {
       const result = await service.getReceiptUrl('pay-1', 'user-tenant-1', 'TENANT');
 
       expect(result.receiptUrl).toContain('signed.r2.dev');
-      expect(repo.findPaymentWithPropertyOrThrow).not.toHaveBeenCalled();
+      expect(repo.findPaymentWithProperty).not.toHaveBeenCalled();
     });
 
     it('throws 403 when tenant is not linked to the payment', async () => {
@@ -217,7 +220,6 @@ describe('PaymentsService — generateCommissions (Story 7.7)', () => {
     // Default: new payment created
     repo.findContractWithProperty.mockResolvedValue(CONTRACT_WITH_PROP);
     repo.findByContractAndPeriod.mockResolvedValue(null); // isNew = true
-    repo.findPaymentWithPropertyOrThrow.mockResolvedValue(null);
     repo.createOrUpdate.mockResolvedValue({ id: 'pay-new', status: PaymentStatus.PAID });
   });
 
@@ -231,7 +233,7 @@ describe('PaymentsService — generateCommissions (Story 7.7)', () => {
       },
     ]);
 
-    await service.create('owner-1', 'OWNER', {
+    await service.createPayment('owner-1', 'OWNER', {
       contractId: 'contract-1',
       amount: 150000,
       period: '2026-01',
@@ -262,7 +264,7 @@ describe('PaymentsService — generateCommissions (Story 7.7)', () => {
       },
     ]);
 
-    await service.create('owner-1', 'OWNER', {
+    await service.createPayment('owner-1', 'OWNER', {
       contractId: 'contract-1',
       amount: 150000,
       period: '2026-01',
@@ -274,7 +276,6 @@ describe('PaymentsService — generateCommissions (Story 7.7)', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           amountHT: 25000,
-          type: 'MANAGEMENT',
         }),
       }),
     );
@@ -283,7 +284,7 @@ describe('PaymentsService — generateCommissions (Story 7.7)', () => {
   it('does not create commission when mandate has no commissionType', async () => {
     prisma.mandate.findMany.mockResolvedValue([]); // DB filters commissionType: { not: null }
 
-    await service.create('owner-1', 'OWNER', {
+    await service.createPayment('owner-1', 'OWNER', {
       contractId: 'contract-1',
       amount: 150000,
       period: '2026-01',
