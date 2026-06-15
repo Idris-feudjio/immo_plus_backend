@@ -36,19 +36,19 @@ export class UsersController {
 
   // ── Me ────────────────────────────────────────────────────────────────────
 
-  @Get('me')
+  @Get('profile')
   @ApiOperation({ summary: "Profil de l'utilisateur connecté" })
   getMe(@CurrentUser() user: AuthUser) {
-    return this.service.getProfile(user.id);
+    return this.service.findByIdOrThrow(user.id);
   }
 
-  @Patch('me')
+  @Patch('profile')
   @ApiOperation({ summary: 'Mettre à jour le profil' })
   updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto) {
-    return this.service.updateProfile(user.id, dto);
+    return this.service.update(user.id, dto);
   }
 
-  @Post('me/avatar')
+  @Post('profile/avatar')
   @ApiOperation({ summary: "Upload de l'avatar" })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
@@ -60,11 +60,18 @@ export class UsersController {
 
   // ── Admin ──────────────────────────────────────────────────────────────────
 
-  @Post('search')
+  @Post('search/all')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste paginée des utilisateurs (admin)' })
   findWithPagination(@Body() body: PaginationDto) {
     return this.service.findWithPagination(body);
+  }
+
+  @Post('search')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Liste complète des utilisateurs sans pagination (admin)' })
+  findAll(@Body() body: PaginationDto) {
+    return this.service.findAll(body);
   }
 
   @Get(':id/detail')
@@ -73,7 +80,7 @@ export class UsersController {
     if (user.role !== Role.ADMIN && user.id !== id) {
       throw new ForbiddenException('INSUFFICIENT_PERMISSIONS');
     }
-    return this.service.getUserById(id);
+    return this.service.findByIdOrThrow(id);
   }
 
   @Public()
@@ -87,7 +94,7 @@ export class UsersController {
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Modifier le rôle ou le statut d\'un utilisateur (admin)' })
   update(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
-    return this.service.adminUpdateUser(id, dto);
+    return this.service.update(id, dto);
   }
 
   @Delete(':id')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma, Role, User } from '@prisma/client';
 import {
   BaseRepository,
@@ -16,6 +16,8 @@ export type UserCreateData = {
   passwordHash: string;
   role?: Role;
   phone?: string;
+  isActive?: boolean;
+  avatarUrl?: string;
 };
 
 export type UserView = Omit<User, 'passwordHash'>;
@@ -35,7 +37,7 @@ const USER_QUERY_FIELDS: QueryField[] = [
 ];
 
 @Injectable()
-export class UserRepository extends BaseRepository<User, UserCreateData> {
+export class UserRepository extends BaseRepository<User, UserCreateData, UserView> {
   constructor(private readonly prisma: PrismaService) {
     super(
       prisma.user as unknown as PrismaModelDelegate<User>,
@@ -43,25 +45,24 @@ export class UserRepository extends BaseRepository<User, UserCreateData> {
     );
   }
 
-  override findById(id: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { id }, select: USER_SELECT }) as Promise<User | null>;
+  override findById(id: string): Promise<UserView | null> {
+    return this.prisma.user.findUnique({ where: { id }, select: USER_SELECT }) as Promise<UserView | null>;
   }
 
-  async findByIdProjectedOrThrow(id: string): Promise<UserView> {
-    const user = await this.findById(id);
-    if (!user) throw new NotFoundException('Utilisateur introuvable.');
-    return user as unknown as UserView;
+  override async findAll(
+    request?: SearchRequest,
+    baseWhere: Record<string, unknown> = {},
+  ): Promise<UserView[]> {
+    const where = this.buildSearchWhere(request ?? {}, baseWhere);
+    const data = await this.prisma.user.findMany({ where, select: USER_SELECT });
+    return data as unknown as UserView[];
   }
 
-  updateProjected(id: string, data: object): Promise<UserView> {
+  override update(id: string, data: Partial<UserCreateData>): Promise<UserView> {
     return this.prisma.user.update({ where: { id }, data, select: USER_SELECT }) as Promise<UserView>;
   }
 
-  /**
-   * Override: always project via USER_SELECT so passwordHash is never returned,
-   * regardless of which service method triggers the query.
-   */
-  override async findWithPagination(request: SearchRequest): Promise<PaginatedResult<User>> {
+  override async findWithPagination(request: SearchRequest): Promise<PaginatedResult<UserView>> {
     const pageNumber = request.pageNumber ?? 0;
     const pageSize = request.pageSize ?? 20;
     const where = this.buildSearchWhere(request);
@@ -80,7 +81,7 @@ export class UserRepository extends BaseRepository<User, UserCreateData> {
       this.prisma.user.count({ where }),
     ]);
 
-    return { data: data as unknown as User[], meta: buildMeta(total, pageNumber, pageSize) };
+    return { data: data as unknown as UserView[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
   findManagerById(managerId: string): Promise<User | null> {

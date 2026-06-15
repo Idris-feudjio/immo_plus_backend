@@ -23,8 +23,8 @@ export interface PrismaModelDelegate<T> {
   count(args?: { where?: object }): Promise<number>;
 }
 
-export abstract class BaseRepository<T, D extends object = Record<string, unknown>>
-  implements IRepository<T, D>
+export abstract class BaseRepository<T, D extends object = Record<string, unknown>, TView = T>
+  implements IRepository<T, D, TView>
 {
   constructor(
     protected readonly delegate: PrismaModelDelegate<T>,
@@ -37,53 +37,40 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
 
   // ── Standard CRUD ───────────────────────────────────────────────────────────
 
-  /** Find a single record by its primary key. Returns null if not found. */
-  async findById(id: string): Promise<T | null> {
-    return this.delegate.findUnique({ where: { id } });
+  async findById(id: string): Promise<TView | null> {
+    return this.delegate.findUnique({ where: { id } }) as unknown as TView | null;
   }
 
-  /** Find by id, throwing NotFoundException if absent. */
-  async findByIdOrThrow(id: string): Promise<T> {
+  async findByIdOrThrow(id: string): Promise<TView> {
     const record = await this.findById(id);
     if (!record) throw new NotFoundException(`Resource with id "${id}" not found`);
     return record;
   }
 
-  /**
-   * Return all records matching the search request.
-   * Pass baseWhere to enforce invariant conditions (e.g. { deletedAt: null }).
-   */
   async findAll(
     request?: SearchRequest,
     baseWhere: Record<string, unknown> = {},
-  ): Promise<T[]> {
+  ): Promise<TView[]> {
     const where = this.buildSearchWhere(request ?? {}, baseWhere);
-    return this.delegate.findMany({ where });
+    return this.delegate.findMany({ where }) as unknown as TView[];
   }
 
-  /** Create a new record. */
-  async create(data: D): Promise<T> {
-    return this.delegate.create({ data });
+  async create(data: D): Promise<TView> {
+    return this.delegate.create({ data }) as unknown as TView;
   }
 
-  /** Update a record by id. */
-  async update(id: string, data: Partial<D>): Promise<T> {
-    return this.delegate.update({ where: { id }, data });
+  async update(id: string, data: Partial<D>): Promise<TView> {
+    return this.delegate.update({ where: { id }, data }) as unknown as TView;
   }
 
-  /** Hard-delete a record by id. */
   async delete(id: string): Promise<void> {
     await this.delegate.delete({ where: { id } });
   }
 
-  /**
-   * Return a paginated result.
-   * Pass baseWhere to enforce invariant conditions (e.g. { deletedAt: null }).
-   */
   async findWithPagination(
     request: SearchRequest,
     baseWhere: Record<string, unknown> = {},
-  ): Promise<PaginatedResult<T>> {
+  ): Promise<PaginatedResult<TView>> {
     const pageNumber = request.pageNumber ?? 0;
     const pageSize = request.pageSize ?? 10;
     const where = this.buildSearchWhere(request, baseWhere);
@@ -99,7 +86,7 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
       this.delegate.count({ where }),
     ]);
 
-    return { data, meta: buildMeta(total, pageNumber, pageSize) };
+    return { data: data as unknown as TView[], meta: buildMeta(total, pageNumber, pageSize) };
   }
 
   // ── Query helpers (available to concrete repositories) ─────────────────────
@@ -180,13 +167,11 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
     }, []);
   }
 
-  /** Count records matching the optional search request. */
   async count(request?: SearchRequest): Promise<number> {
     const where = this.buildSearchWhere(request ?? {});
     return this.delegate.count({ where });
   }
 
-  /** Return true if a record with the given id exists. */
   async exists(id: string): Promise<boolean> {
     const record = await this.findById(id);
     return record !== null;
