@@ -14,7 +14,7 @@ function mockRepository() {
     create: jest.fn(),
     updateStatus: jest.fn(),
     findDuplicate: jest.fn().mockResolvedValue(null),
-    findPaginated: jest.fn(),
+    findWithPagination: jest.fn(),
     findActiveByManager: jest.fn(),
   };
 }
@@ -94,7 +94,7 @@ describe('MandatesService', () => {
     });
 
     it('creates mandate with ACTIVE status for OWNER of property', async () => {
-      const result = await service.create('owner-1', Role.OWNER, CREATE_DTO);
+      const result = await service.createMandate('owner-1', Role.OWNER, CREATE_DTO);
 
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({ status: MandateStatus.ACTIVE }),
@@ -103,7 +103,7 @@ describe('MandatesService', () => {
     });
 
     it('allows ADMIN to create mandate regardless of ownership', async () => {
-      const result = await service.create('admin-1', Role.ADMIN, CREATE_DTO);
+      const result = await service.createMandate('admin-1', Role.ADMIN, CREATE_DTO);
 
       expect(result).toEqual(MANDATE_STUB);
     });
@@ -111,27 +111,27 @@ describe('MandatesService', () => {
     it('throws NotFoundException when property does not exist', async () => {
       prisma.property.findUnique.mockResolvedValue(null);
 
-      await expect(service.create('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(NotFoundException);
+      await expect(service.createMandate('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(NotFoundException);
     });
 
     it('throws ForbiddenException when non-owner tries to create', async () => {
-      await expect(service.create('other-user', Role.OWNER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
+      await expect(service.createMandate('other-user', Role.OWNER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
     });
 
     it('throws ForbiddenException when manager is not in agency', async () => {
       prisma.agencyMember.findFirst.mockResolvedValue(null);
 
-      await expect(service.create('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
+      await expect(service.createMandate('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
     });
 
     it('throws ConflictException when duplicate active mandate exists', async () => {
       repository.findDuplicate.mockResolvedValue({ id: 'existing-mandate' });
 
-      await expect(service.create('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(ConflictException);
+      await expect(service.createMandate('owner-1', Role.OWNER, CREATE_DTO)).rejects.toThrow(ConflictException);
     });
 
     it('syncs Property.managerId after mandate creation', async () => {
-      await service.create('owner-1', Role.OWNER, CREATE_DTO);
+      await service.createMandate('owner-1', Role.OWNER, CREATE_DTO);
 
       expect(prisma.property.update).toHaveBeenCalledWith({
         where: { id: 'property-1' },
@@ -140,7 +140,7 @@ describe('MandatesService', () => {
     });
 
     it('sends in-app notification to manager after creation', async () => {
-      await service.create('owner-1', Role.OWNER, CREATE_DTO);
+      await service.createMandate('owner-1', Role.OWNER, CREATE_DTO);
 
       expect(notificationRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -216,21 +216,4 @@ describe('MandatesService', () => {
     });
   });
 
-  // ── list ──────────────────────────────────────────────────────────────────
-
-  describe('list', () => {
-    it('delegates to repository.findPaginated with role-scoped where clause', async () => {
-      const mockResult = { data: [MANDATE_STUB], meta: { total: 1, pageNumber: 0, pageSize: 10, totalPages: 1 } };
-      repository.findPaginated.mockResolvedValue(mockResult);
-
-      const result = await service.list('user-1', Role.MANAGER, { page: 1 });
-
-      expect(repository.findPaginated).toHaveBeenCalledWith(
-        expect.objectContaining({ managerId: 'user-1', deletedAt: null }),
-        1,
-        10,
-      );
-      expect(result).toEqual(mockResult);
-    });
-  });
 });

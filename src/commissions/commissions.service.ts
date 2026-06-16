@@ -4,7 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Commission, CommissionStatus, Prisma, Role } from '@prisma/client';
+import { Commission, CommissionStatus, Role } from '@prisma/client';
+import type { SearchRequest } from '../common/interfaces/search-request.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PdfService } from '../common/services/pdf.service';
@@ -12,9 +13,10 @@ import { CacheService } from '../cache/cache.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import { EmailQueueService } from '../notifications/email-queue.service';
 import { MandateRepository } from '../mandates/mandate.repository';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { CreateCommissionDto, FilterCommissionsDto, PayCommissionDto } from './dto/commission.dto';
-import { CommissionRepository } from './commission.repository';
+import type { CreateCommissionDto, PayCommissionDto } from './dto/commission.dto';
+import { CommissionCreateData, CommissionRepository } from './commission.repository';
 
 type WithRelations = Commission & {
   mandate?: {
@@ -38,9 +40,9 @@ type WithRelations = Commission & {
 };
 
 @Injectable()
-export class CommissionsService {
+export class CommissionsService extends BaseService<Commission, CommissionCreateData> {
   constructor(
-    private readonly repository: CommissionRepository,
+    protected override readonly repository: CommissionRepository,
     private readonly prisma: PrismaService,
     private readonly notificationRepo: NotificationRepository,
     private readonly emailQueue: EmailQueueService,
@@ -48,10 +50,12 @@ export class CommissionsService {
     private readonly pdf: PdfService,
     private readonly cache: CacheService,
     private readonly mandateRepo: MandateRepository,
-  ) {}
+  ) {
+    super(repository);
+  }
 
   // Story 8.2: Manual commission creation (PLACEMENT or EXCEPTIONAL)
-  async create(userId: string, role: string, dto: CreateCommissionDto): Promise<Commission> {
+  async createCommission(userId: string, role: string, dto: CreateCommissionDto): Promise<Commission> {
     const contract = await this.prisma.contract.findUnique({
       where: { id: dto.contractId },
       select: {
@@ -234,32 +238,17 @@ export class CommissionsService {
     return this.repository.update(id, { status: CommissionStatus.CANCELLED });
   }
 
-  // Story 8.5: Paginated list (MANAGER → own agency, ADMIN → all)
-  async list(userId: string, role: string, query: FilterCommissionsDto): Promise<PaginatedResult<Commission>> {
-    const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 10));
-    const where: Prisma.CommissionWhereInput = {};
-
+  // Story 8.5: Paginated search (MANAGER → own agency, ADMIN → all)
+  async search(userId: string, role: string, query: SearchRequest): Promise<PaginatedResult<Commission>> {
+    const baseWhere: Record<string, unknown> = {};
     if (role === Role.MANAGER) {
       const memberships = await this.prisma.agencyMember.findMany({
         where: { userId },
         select: { agencyId: true },
       });
-      where.agencyId = { in: memberships.map((m) => m.agencyId) };
+      baseWhere.agencyId = { in: memberships.map((m) => m.agencyId) };
     }
-
-    if (query.status) where.status = query.status;
-    if (query.type) where.type = query.type;
-    if (query.agencyId) where.agencyId = query.agencyId;
-    if (query.contractId) where.contractId = query.contractId;
-    if (query.dateFrom || query.dateTo) {
-      const dateFilter: Prisma.DateTimeFilter = {};
-      if (query.dateFrom) dateFilter.gte = new Date(query.dateFrom);
-      if (query.dateTo) dateFilter.lte = new Date(query.dateTo);
-      where.createdAt = dateFilter;
-    }
-
-    return this.repository.findPaginated(where, page, limit);
+    return this.findWithPagination(query, baseWhere);
   }
 
   // Story 8.5: Dashboard with Redis cache (TTL 5min)

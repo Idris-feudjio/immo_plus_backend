@@ -2,16 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
-  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { CreateCommissionDto, FilterCommissionsDto, PayCommissionDto } from './dto/commission.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
+import { CreateCommissionDto, PayCommissionDto } from './dto/commission.dto';
 import { CommissionsService } from './commissions.service';
 
 @ApiTags('commissions')
@@ -33,18 +35,19 @@ export class CommissionsController {
     return this.service.getMyDue(user.id);
   }
 
-  @Get()
+  @Post('search')
   @Roles(Role.MANAGER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liste des commissions (MANAGER | ADMIN)' })
-  list(@CurrentUser() user: AuthUser, @Query() query: FilterCommissionsDto) {
-    return this.service.list(user.id, user.role, query);
+  search(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+    return this.service.search(user.id, user.role, body);
   }
 
   @Post()
   @Roles(Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Créer une commission manuelle (PLACEMENT ou EXCEPTIONAL)' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateCommissionDto) {
-    return this.service.create(user.id, user.role, dto);
+    return this.service.createCommission(user.id, user.role, dto);
   }
 
   @Post(':id/pay')

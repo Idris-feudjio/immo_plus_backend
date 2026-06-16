@@ -20,7 +20,7 @@ export interface SearchRequest {
   sortClauses?: SortClause[];
 }
 
-export type FilterType = 'exact' | 'contains' | 'in' | 'range' | 'boolean';
+export type FilterType = 'exact' | 'contains' | 'in' | 'range' | 'boolean' | 'date-range';
 
 /**
  * Maps a SearchRequest filter/search/sort key to a Prisma model field.

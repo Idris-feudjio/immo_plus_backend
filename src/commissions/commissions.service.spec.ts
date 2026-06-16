@@ -9,7 +9,7 @@ function mockRepository() {
     findById: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
-    findPaginated: jest.fn(),
+    findWithPagination: jest.fn(),
     getDashboardStats: jest.fn(),
     getOwnerDue: jest.fn(),
   };
@@ -129,7 +129,7 @@ describe('CommissionsService', () => {
 
   // ── Story 8.2: create ─────────────────────────────────────────────────────
 
-  describe('create (Story 8.2)', () => {
+  describe('createCommission (Story 8.2)', () => {
     const DTO = {
       contractId: 'contract-1',
       type: CommissionCategory.PLACEMENT,
@@ -142,7 +142,7 @@ describe('CommissionsService', () => {
       prisma.mandate.findUnique.mockResolvedValue(MANDATE);
       repository.create.mockResolvedValue({ ...PENDING_COMMISSION, amountHT: 100000 });
 
-      const result = await service.create('manager-1', Role.MANAGER, DTO);
+      const result = await service.createCommission('manager-1', Role.MANAGER, DTO);
 
       expect(result.amountHT).toBe(100000);
       expect(repository.create).toHaveBeenCalledWith(
@@ -163,7 +163,7 @@ describe('CommissionsService', () => {
       prisma.mandate.findUnique.mockResolvedValue(MANDATE);
       repository.create.mockResolvedValue(PENDING_COMMISSION);
 
-      await service.create('manager-1', Role.MANAGER, DTO);
+      await service.createCommission('manager-1', Role.MANAGER, DTO);
 
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({ tvaAmount: 19250, amountTTC: 119250 }),
@@ -174,7 +174,7 @@ describe('CommissionsService', () => {
       prisma.contract.findUnique.mockResolvedValue(CONTRACT);
       mandateRepo.findActiveByManager.mockResolvedValue(null);
 
-      await expect(service.create('manager-x', Role.MANAGER, DTO)).rejects.toThrow(ForbiddenException);
+      await expect(service.createCommission('manager-x', Role.MANAGER, DTO)).rejects.toThrow(ForbiddenException);
     });
 
     it('ADMIN with mandateId creates commission', async () => {
@@ -182,7 +182,7 @@ describe('CommissionsService', () => {
       prisma.mandate.findUnique.mockResolvedValue(MANDATE);
       repository.create.mockResolvedValue(PENDING_COMMISSION);
 
-      await service.create('admin-1', Role.ADMIN, { ...DTO, mandateId: 'mandate-1' });
+      await service.createCommission('admin-1', Role.ADMIN, { ...DTO, mandateId: 'mandate-1' });
 
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({ agencyId: 'agency-1', mandateId: 'mandate-1' }),
@@ -193,7 +193,7 @@ describe('CommissionsService', () => {
       prisma.contract.findUnique.mockResolvedValue(CONTRACT);
       repository.create.mockResolvedValue(PENDING_COMMISSION);
 
-      await service.create('admin-1', Role.ADMIN, { ...DTO, agencyId: 'agency-1' });
+      await service.createCommission('admin-1', Role.ADMIN, { ...DTO, agencyId: 'agency-1' });
 
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({ agencyId: 'agency-1' }),
@@ -206,7 +206,7 @@ describe('CommissionsService', () => {
       prisma.mandate.findUnique.mockResolvedValue(MANDATE);
       repository.create.mockResolvedValue(PENDING_COMMISSION);
 
-      await service.create('manager-1', Role.MANAGER, DTO);
+      await service.createCommission('manager-1', Role.MANAGER, DTO);
 
       expect(notifRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'owner-1', type: 'commission_generated' }),
@@ -219,7 +219,7 @@ describe('CommissionsService', () => {
       prisma.mandate.findUnique.mockResolvedValue(MANDATE);
       repository.create.mockResolvedValue(PENDING_COMMISSION);
 
-      await service.create('manager-1', Role.MANAGER, DTO);
+      await service.createCommission('manager-1', Role.MANAGER, DTO);
 
       expect(emailQueue.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'owner@test.cm', template: 'commission-generated' }),
@@ -229,7 +229,7 @@ describe('CommissionsService', () => {
     it('throws 404 when contract not found', async () => {
       prisma.contract.findUnique.mockResolvedValue(null);
 
-      await expect(service.create('manager-1', Role.MANAGER, DTO)).rejects.toThrow(NotFoundException);
+      await expect(service.createCommission('manager-1', Role.MANAGER, DTO)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -351,7 +351,7 @@ describe('CommissionsService', () => {
 
   // ── Story 8.5: list + dashboard ───────────────────────────────────────────
 
-  describe('list (Story 8.5)', () => {
+  describe('search (Story 8.5)', () => {
     const PAGINATED = {
       data: [PENDING_COMMISSION],
       meta: { total: 1, pageNumber: 0, pageSize: 10, totalPages: 1 },
@@ -359,15 +359,14 @@ describe('CommissionsService', () => {
 
     it('delegates to repository with role-scoped where clause', async () => {
       prisma.agencyMember.findMany.mockResolvedValue([{ agencyId: 'agency-1' }]);
-      repository.findPaginated.mockResolvedValue(PAGINATED);
+      repository.findWithPagination.mockResolvedValue(PAGINATED);
 
-      const result = await service.list('manager-1', Role.MANAGER, {});
+      const result = await service.search('manager-1', Role.MANAGER, { pageNumber: 0, pageSize: 10 });
 
       expect(result).toEqual(PAGINATED);
-      expect(repository.findPaginated).toHaveBeenCalledWith(
+      expect(repository.findWithPagination).toHaveBeenCalledWith(
+        { pageNumber: 0, pageSize: 10 },
         expect.objectContaining({ agencyId: { in: ['agency-1'] } }),
-        1,
-        10,
       );
     });
   });

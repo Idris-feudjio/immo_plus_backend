@@ -20,7 +20,6 @@ import { StorageService } from '../storage/storage.service';
 import { UnitOfWorkService } from '../database/unit-of-work.service';
 import {
   CreateContractDto,
-  FilterContractsDto,
   RenewContractDto,
   TerminateContractDto,
 } from './dto/contract.dto';
@@ -39,16 +38,9 @@ export class ContractsService extends BaseService<Contract, ContractCreateData> 
     super(repository);
   }
 
-  async list(userId: string, role: string, query: FilterContractsDto): Promise<PaginatedResult<Contract>> {
+  async search(userId: string, role: string, query: SearchRequest): Promise<PaginatedResult<Contract>> {
     const baseWhere = await this.buildRoleWhere(userId, role);
-    if (query.status) baseWhere.status = query.status;
-    if (query.propertyId) baseWhere.propertyId = query.propertyId;
-    if (query.tenantId) baseWhere.tenantId = query.tenantId;
-    const { page = 1, limit = 20 } = query;
-    return this.findWithPagination(
-      { pageNumber: page - 1, pageSize: limit, sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }] },
-      baseWhere,
-    );
+    return this.findWithPagination(query, baseWhere);
   }
 
   async createContract(userId: string, role: string, dto: CreateContractDto): Promise<Contract> {

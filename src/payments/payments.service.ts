@@ -8,10 +8,10 @@ import { EmailQueueService } from '../notifications/email-queue.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import {
   CreatePaymentDto,
-  FilterPaymentsDto,
   SendRemindersDto,
   UpdatePaymentDto,
 } from './dto/payment.dto';
+import type { SearchRequest } from '../common/interfaces/search-request.interface';
 import { PaymentCreateData, PaymentRepository } from './payment.repository';
 
 @Injectable()
@@ -26,13 +26,9 @@ export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
     super(repository);
   }
 
-  async list(userId: string, role: string, query: FilterPaymentsDto): Promise<PaginatedResult<Payment>> {
-    const baseWhere = await this.buildOwnerWhere(userId, role, query);
-    const { page = 1, limit = 20 } = query;
-    const sortClauses = query.sort === 'dueDate'
-      ? [{ fieldName: 'dueDate', direction: 'ASC' as const }]
-      : [{ fieldName: 'dueDate', direction: 'DESC' as const }];
-    return this.findWithPagination({ pageNumber: page - 1, pageSize: limit, sortClauses }, baseWhere);
+  async search(userId: string, role: string, query: SearchRequest): Promise<PaginatedResult<Payment>> {
+    const baseWhere = await this.buildBaseWhere(userId, role);
+    return this.findWithPagination(query, baseWhere);
   }
 
   async createPayment(userId: string, role: string, dto: CreatePaymentDto): Promise<Payment> {
@@ -168,7 +164,7 @@ export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
   }
 
   async getOverdue(userId: string, role: string): Promise<{ data: Payment[] }> {
-    const baseWhere = await this.buildOwnerWhere(userId, role, {});
+    const baseWhere = await this.buildBaseWhere(userId, role);
     const data = await this.repository.findOverdue(baseWhere);
     return { data };
   }
@@ -178,7 +174,7 @@ export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
     role: string,
     dto: SendRemindersDto,
   ): Promise<{ sent: number; channel: string }> {
-    const baseWhere = await this.buildOwnerWhere(userId, role, {});
+    const baseWhere = await this.buildBaseWhere(userId, role);
     const payments = await this.repository.findForReminders(baseWhere, dto.paymentIds);
     // TODO: send actual reminders via BullMQ queue
     console.log(`Sending ${dto.channel} reminders for ${payments.length} payments`);
@@ -190,7 +186,7 @@ export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
     role: string,
     query: { year?: number; month?: number; propertyId?: string },
   ) {
-    const baseWhere = await this.buildOwnerWhere(userId, role, {});
+    const baseWhere = await this.buildBaseWhere(userId, role);
     const { paid, pending, late } = await this.repository.aggregateStats(baseWhere, query);
 
     const totalCollected = paid._sum.amount ?? 0;
@@ -239,32 +235,14 @@ export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
-  private async buildOwnerWhere(
-    userId: string,
-    role: string,
-    filters: Partial<FilterPaymentsDto>,
-  ): Promise<Record<string, unknown>> {
+  private async buildBaseWhere(userId: string, role: string): Promise<Record<string, unknown>> {
     const where: Record<string, unknown> = {};
-
     if (role === Role.TENANT) {
       const tenant = await this.repository.findTenantByUserId(userId);
       where.tenantId = tenant ? tenant.id : 'never';
     } else if (role !== Role.ADMIN) {
       where.property = { ownerId: userId };
     }
-
-    if (filters.contractId) where.contractId = filters.contractId;
-    if (filters.tenantId) where.tenantId = filters.tenantId;
-    if (filters.propertyId) where.propertyId = filters.propertyId;
-    if (filters.status) where.status = filters.status;
-    if (filters.period) where.period = filters.period;
-    if (filters.startDate || filters.endDate) {
-      where.dueDate = {
-        gte: filters.startDate ? new Date(filters.startDate) : undefined,
-        lte: filters.endDate ? new Date(filters.endDate) : undefined,
-      };
-    }
-
     return where;
   }
 }

@@ -33,7 +33,7 @@ const PAYMENT_QUERY_FIELDS: QueryField[] = [
   { filterKey: 'contractId', prismaField: 'contractId', filterable: true, filterType: 'exact' },
   { filterKey: 'tenantId',   prismaField: 'tenantId',   filterable: true, filterType: 'exact' },
   { filterKey: 'propertyId', prismaField: 'propertyId', filterable: true, filterType: 'exact' },
-  { filterKey: 'dueDate',    prismaField: 'dueDate',    sortable: true },
+  { filterKey: 'dueDate',    prismaField: 'dueDate',    sortable: true, filterable: true, filterType: 'date-range' },
 ];
 
 const PAYMENT_INCLUDE = {

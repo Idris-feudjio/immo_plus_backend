@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
+import type { ICrudOperations } from '../interfaces/crud-operations.interface';
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
-import type { IRepository } from '../interfaces/repository.interface';
 import type { QueryField, SearchRequest, SortClause } from '../interfaces/search-request.interface';
 import { buildMeta } from '../utils/pagination.util';
 
@@ -24,7 +24,7 @@ export interface PrismaModelDelegate<T> {
 }
 
 export abstract class BaseRepository<T, D extends object = Record<string, unknown>, TView = T>
-  implements IRepository<T, D, TView>
+  implements ICrudOperations<T, D, TView>
 {
   constructor(
     protected readonly delegate: PrismaModelDelegate<T>,
@@ -140,6 +140,17 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
           case 'boolean':
             where[field.prismaField] = values[0] === 'true';
             break;
+          case 'date-range': {
+            const gte = values[0] ? new Date(values[0]) : undefined;
+            const lte = values[1] ? new Date(values[1]) : undefined;
+            if (gte !== undefined || lte !== undefined) {
+              where[field.prismaField] = {
+                ...(gte !== undefined ? { gte } : {}),
+                ...(lte !== undefined ? { lte } : {}),
+              };
+            }
+            break;
+          }
           default: // 'exact'
             where[field.prismaField] = values[0];
         }

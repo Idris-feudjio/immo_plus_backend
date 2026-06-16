@@ -13,9 +13,9 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import {
   CreateContractDto,
-  FilterContractsDto,
   RenewContractDto,
   TerminateContractDto,
 } from './dto/contract.dto';
@@ -26,10 +26,11 @@ import { ContractsService } from './contracts.service';
 export class ContractsController {
   constructor(private readonly service: ContractsService) {}
 
-  @Get()
+  @Post('search')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liste des contrats' })
-  list(@CurrentUser() user: AuthUser, @Query() query: FilterContractsDto) {
-    return this.service.list(user.id, user.role, query);
+  search(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+    return this.service.search(user.id, user.role, body);
   }
 
   @Post()

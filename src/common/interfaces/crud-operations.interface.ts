@@ -1,7 +1,7 @@
 import type { PaginatedResult } from './paginated-result.interface';
 import type { SearchRequest } from './search-request.interface';
 
-export interface IService<T, D extends object = Record<string, unknown>, TView = T> {
+export interface ICrudOperations<T, D extends object = Record<string, unknown>, TView = T> {
   findById(id: string): Promise<TView | null>;
   findByIdOrThrow(id: string): Promise<TView>;
   findAll(request?: SearchRequest, baseWhere?: Record<string, unknown>): Promise<TView[]>;

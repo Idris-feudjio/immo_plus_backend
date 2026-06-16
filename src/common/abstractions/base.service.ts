@@ -1,10 +1,10 @@
+import type { ICrudOperations } from '../interfaces/crud-operations.interface';
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
-import type { IService } from '../interfaces/service.interface';
 import type { SearchRequest } from '../interfaces/search-request.interface';
 import { BaseRepository } from './base.repository';
 
 export abstract class BaseService<T, D extends object = Record<string, unknown>, TView = T>
-  implements IService<T, D, TView>
+  implements ICrudOperations<T, D, TView>
 {
   constructor(protected readonly repository: BaseRepository<T, D, TView>) {}
 
