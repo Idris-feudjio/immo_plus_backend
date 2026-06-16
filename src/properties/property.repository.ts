@@ -15,7 +15,7 @@ import {
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { CreatePropertyDto, FilterPropertiesDto } from './dto/create-property.dto';
 
 // ─── Exported types ───────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ export class PropertyRepository extends BaseRepository<Property, PropertyCreateD
    * @param extraWhere  Server-side conditions merged before search (e.g. { ownerId, deletedAt: null }).
    */
   async findListPaginated(
-    request: SearchRequest,
+    request: ISearchRequest,
     extraWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<PropertyListItem>> {
     const pageNumber = request.pageNumber ?? 0;

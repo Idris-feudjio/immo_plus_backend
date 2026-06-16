@@ -5,7 +5,7 @@ import {
   PrismaModelDelegate,
 } from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -39,7 +39,7 @@ export class TenantRepository extends BaseRepository<Tenant, TenantCreateData> {
 
   /** Paginated tenants with their active contract — role-based scope is passed as baseWhere by the service. */
   override async findWithPagination(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Tenant>> {
     const pageNumber = request.pageNumber ?? 0;

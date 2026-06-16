@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { SearchRequest, SortClause } from '../common/interfaces/search-request.interface';
+import type { ISearchRequest, SortClause } from '../common/interfaces/search-request.interface';
 import { v4 as uuidv4 } from 'uuid';
 import { CreatePropertyDto, FilterPropertiesDto, UpdatePropertyDto } from './dto/create-property.dto';
 import { PropertyDocumentInput, PropertyImageInput } from './dto/create-property.dto';
@@ -219,7 +219,7 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
    * Convert FilterPropertiesDto (HTTP query params, 1-based page) into the
    * generic SearchRequest used by the repository layer (0-based pageNumber).
    */
-  private toSearchRequest(dto: FilterPropertiesDto): SearchRequest {
+  private toSearchRequest(dto: FilterPropertiesDto): ISearchRequest {
     const filters: Record<string, string[]> = {};
 
     if (dto.city)               filters.city         = [dto.city];

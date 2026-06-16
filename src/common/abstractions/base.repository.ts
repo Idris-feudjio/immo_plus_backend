@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import type { ICrudOperations } from '../interfaces/crud-operations.interface';
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest, SortClause } from '../interfaces/search-request.interface';
+import type { QueryField, ISearchRequest, SortClause } from '../interfaces/search-request.interface';
 import { buildMeta } from '../utils/pagination.util';
 
 /**
@@ -48,7 +48,7 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
   }
 
   async findAll(
-    request?: SearchRequest,
+    request?: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<TView[]> {
     const where = this.buildSearchWhere(request ?? {}, baseWhere);
@@ -68,7 +68,7 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
   }
 
   async findWithPagination(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<TView>> {
     const pageNumber = request.pageNumber ?? 0;
@@ -99,7 +99,7 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
    * - baseWhere  → merged first (e.g. { deletedAt: null } for soft-delete models)
    */
   protected buildSearchWhere(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Record<string, unknown> {
     const where: Record<string, unknown> = { ...baseWhere };
@@ -178,7 +178,7 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
     }, []);
   }
 
-  async count(request?: SearchRequest): Promise<number> {
+  async count(request?: ISearchRequest): Promise<number> {
     const where = this.buildSearchWhere(request ?? {});
     return this.delegate.count({ where });
   }

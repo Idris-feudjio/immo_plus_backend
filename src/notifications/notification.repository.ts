@@ -9,7 +9,7 @@ import {
   PrismaModelDelegate,
 } from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type NotificationCreateData = {
@@ -45,7 +45,7 @@ export class NotificationRepository extends BaseRepository<Notification, Notific
     if (isRead !== undefined) filters.isRead = [String(isRead)];
     if (type) filters.type = [type];
 
-    const request: SearchRequest = {
+    const request: ISearchRequest = {
       filters,
       pageNumber: page - 1,
       pageSize: limit,

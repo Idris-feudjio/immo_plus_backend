@@ -7,7 +7,7 @@ export interface SortClause {
  * Generic query contract for all repository read operations.
  * pageNumber is 0-based; pageSize defaults to 10.
  */
-export interface SearchRequest {
+export interface ISearchRequest {
   /** Global full-text search across all fields marked searchable in QueryField[]. */
   searchKey?: string;
   /** Field-level filters: key = filterKey from QueryField, values = allowed set. */

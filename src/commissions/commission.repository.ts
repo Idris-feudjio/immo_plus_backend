@@ -3,7 +3,7 @@ import { Commission, CommissionCategory, CommissionStatus, Prisma } from '@prism
 import { PrismaService } from '../prisma/prisma.service';
 import { BaseRepository, PrismaModelDelegate } from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 
 const COMMISSION_QUERY_FIELDS: QueryField[] = [
@@ -78,7 +78,7 @@ export class CommissionRepository extends BaseRepository<Commission, CommissionC
   }
 
   override async findWithPagination(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Commission>> {
     const pageNumber = request.pageNumber ?? 0;

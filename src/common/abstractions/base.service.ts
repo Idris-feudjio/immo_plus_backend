@@ -1,6 +1,6 @@
 import type { ICrudOperations } from '../interfaces/crud-operations.interface';
 import type { PaginatedResult } from '../interfaces/paginated-result.interface';
-import type { SearchRequest } from '../interfaces/search-request.interface';
+import type { ISearchRequest } from '../interfaces/search-request.interface';
 import { BaseRepository } from './base.repository';
 
 export abstract class BaseService<T, D extends object = Record<string, unknown>, TView = T>
@@ -16,12 +16,12 @@ export abstract class BaseService<T, D extends object = Record<string, unknown>,
     return this.repository.findByIdOrThrow(id);
   }
 
-  findAll(request?: SearchRequest, baseWhere?: Record<string, unknown>): Promise<TView[]> {
+  findAll(request?: ISearchRequest, baseWhere?: Record<string, unknown>): Promise<TView[]> {
     return this.repository.findAll(request, baseWhere);
   }
 
   findWithPagination(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere?: Record<string, unknown>,
   ): Promise<PaginatedResult<TView>> {
     return this.repository.findWithPagination(request, baseWhere);
@@ -41,7 +41,7 @@ export abstract class BaseService<T, D extends object = Record<string, unknown>,
     await this.repository.delete(id);
   }
 
-  count(request?: SearchRequest): Promise<number> {
+  count(request?: ISearchRequest): Promise<number> {
     return this.repository.count(request);
   }
 

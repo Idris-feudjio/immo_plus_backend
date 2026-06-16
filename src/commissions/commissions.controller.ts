@@ -12,7 +12,7 @@ import { Role } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import { CreateCommissionDto, PayCommissionDto } from './dto/commission.dto';
 import { CommissionsService } from './commissions.service';
 
@@ -39,7 +39,7 @@ export class CommissionsController {
   @Roles(Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liste des commissions (MANAGER | ADMIN)' })
-  search(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+  search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
     return this.service.search(user.id, user.role, body);
   }
 

@@ -11,7 +11,7 @@ import {
   SendRemindersDto,
   UpdatePaymentDto,
 } from './dto/payment.dto';
-import type { SearchRequest } from '../common/interfaces/search-request.interface';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
 import { PaymentCreateData, PaymentRepository } from './payment.repository';
 
 @Injectable()
@@ -26,7 +26,7 @@ export class PaymentsService extends BaseService<Payment, PaymentCreateData> {
     super(repository);
   }
 
-  async search(userId: string, role: string, query: SearchRequest): Promise<PaginatedResult<Payment>> {
+  async search(userId: string, role: string, query: ISearchRequest): Promise<PaginatedResult<Payment>> {
     const baseWhere = await this.buildBaseWhere(userId, role);
     return this.findWithPagination(query, baseWhere);
   }

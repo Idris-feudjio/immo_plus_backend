@@ -14,7 +14,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import {
   CreatePaymentDto,
   SendRemindersDto,
@@ -30,7 +30,7 @@ export class PaymentsController {
   @Post('search')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liste des paiements' })
-  search(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+  search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
     return this.service.search(user.id, user.role, body);
   }
 

@@ -11,7 +11,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import { CreateMandateDto, TerminateMandateDto } from './dto/mandate.dto';
 import { MandatesService } from './mandates.service';
 
@@ -43,7 +43,7 @@ export class MandatesController {
   @Post('search')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List mandates (filtered by role)' })
-  search(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+  search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
     const baseWhere =
       user.role === Role.ADMIN ? {} :
       user.role === Role.MANAGER ? { managerId: user.id } :

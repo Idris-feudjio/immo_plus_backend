@@ -10,7 +10,7 @@ import {
   PrismaModelDelegate,
 } from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -51,7 +51,7 @@ export class PaymentRepository extends BaseRepository<Payment, PaymentCreateData
   }
 
   override async findWithPagination(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Payment>> {
     const pageNumber = request.pageNumber ?? 0;

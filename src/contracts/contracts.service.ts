@@ -14,7 +14,7 @@ import {
 } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { SearchRequest } from '../common/interfaces/search-request.interface';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
 import { PdfService } from '../common/services/pdf.service';
 import { StorageService } from '../storage/storage.service';
 import { UnitOfWorkService } from '../database/unit-of-work.service';
@@ -38,7 +38,7 @@ export class ContractsService extends BaseService<Contract, ContractCreateData> 
     super(repository);
   }
 
-  async search(userId: string, role: string, query: SearchRequest): Promise<PaginatedResult<Contract>> {
+  async search(userId: string, role: string, query: ISearchRequest): Promise<PaginatedResult<Contract>> {
     const baseWhere = await this.buildRoleWhere(userId, role);
     return this.findWithPagination(query, baseWhere);
   }

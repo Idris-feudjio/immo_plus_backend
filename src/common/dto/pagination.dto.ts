@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
-import type { SearchRequest, SortClause } from '../interfaces/search-request.interface';
+import type { ISearchRequest, SortClause } from '../interfaces/search-request.interface';
 
 export class SortClauseDto implements SortClause {
   @ApiPropertyOptional()
@@ -13,7 +13,7 @@ export class SortClauseDto implements SortClause {
   direction!: 'ASC' | 'DESC';
 }
 
-export class PaginationDto implements SearchRequest {
+export class SearchRequestDto implements ISearchRequest {
   @ApiPropertyOptional({ default: 0, description: '0-based page index' })
   @IsOptional()
   @Type(() => Number)

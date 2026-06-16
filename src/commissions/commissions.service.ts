@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Commission, CommissionStatus, Role } from '@prisma/client';
-import type { SearchRequest } from '../common/interfaces/search-request.interface';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PdfService } from '../common/services/pdf.service';
@@ -239,7 +239,7 @@ export class CommissionsService extends BaseService<Commission, CommissionCreate
   }
 
   // Story 8.5: Paginated search (MANAGER → own agency, ADMIN → all)
-  async search(userId: string, role: string, query: SearchRequest): Promise<PaginatedResult<Commission>> {
+  async search(userId: string, role: string, query: ISearchRequest): Promise<PaginatedResult<Commission>> {
     const baseWhere: Record<string, unknown> = {};
     if (role === Role.MANAGER) {
       const memberships = await this.prisma.agencyMember.findMany({

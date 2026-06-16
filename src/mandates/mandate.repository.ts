@@ -3,7 +3,7 @@ import { Mandate, MandateStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BaseRepository, PrismaModelDelegate } from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 
 const MANDATE_QUERY_FIELDS: QueryField[] = [
@@ -45,7 +45,7 @@ export class MandateRepository extends BaseRepository<Mandate, MandateCreateData
   }
 
   override async findWithPagination(
-    request: SearchRequest,
+    request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<PaginatedResult<Mandate>> {
     const pageNumber = request.pageNumber ?? 0;

@@ -14,7 +14,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import { TurnstileGuard } from '../common/guards/turnstile.guard.js';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import {
@@ -48,7 +48,7 @@ export class TenantsController {
   @Post('search')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Recherche paginée de locataires' })
-  findWithPagination(@CurrentUser() user: AuthUser, @Body() body: PaginationDto) {
+  findWithPagination(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
     const baseWhere = user.role !== Role.ADMIN ? { ownerId: user.id } : {};
     return this.service.findWithPagination(body, baseWhere);
   }
@@ -56,7 +56,7 @@ export class TenantsController {
   @Post('search/all')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste complète des locataires sans pagination (admin)' })
-  findAll(@Body() body: PaginationDto) {
+  findAll(@Body() body: SearchRequestDto) {
     return this.service.findAll(body);
   }
 

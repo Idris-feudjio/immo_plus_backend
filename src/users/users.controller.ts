@@ -20,7 +20,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { StorageService } from '../storage/storage.service';
 import { AdminUpdateUserDto, DelegationDto, UpdateProfileDto } from './dto/update-user.dto';
@@ -63,14 +63,14 @@ export class UsersController {
   @Post('search/all')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste paginée des utilisateurs (admin)' })
-  findWithPagination(@Body() body: PaginationDto) {
+  findWithPagination(@Body() body: SearchRequestDto) {
     return this.service.findWithPagination(body);
   }
 
   @Post('search')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Liste complète des utilisateurs sans pagination (admin)' })
-  findAll(@Body() body: PaginationDto) {
+  findAll(@Body() body: SearchRequestDto) {
     return this.service.findAll(body);
   }
 

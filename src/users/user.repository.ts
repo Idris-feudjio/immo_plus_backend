@@ -5,7 +5,7 @@ import {
   PrismaModelDelegate,
 } from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, SearchRequest } from '../common/interfaces/search-request.interface';
+import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -50,7 +50,7 @@ export class UserRepository extends BaseRepository<User, UserCreateData, UserVie
   }
 
   override async findAll(
-    request?: SearchRequest,
+    request?: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
   ): Promise<UserView[]> {
     const where = this.buildSearchWhere(request ?? {}, baseWhere);
@@ -62,7 +62,7 @@ export class UserRepository extends BaseRepository<User, UserCreateData, UserVie
     return this.prisma.user.update({ where: { id }, data, select: USER_SELECT }) as Promise<UserView>;
   }
 
-  override async findWithPagination(request: SearchRequest): Promise<PaginatedResult<UserView>> {
+  override async findWithPagination(request: ISearchRequest): Promise<PaginatedResult<UserView>> {
     const pageNumber = request.pageNumber ?? 0;
     const pageSize = request.pageSize ?? 20;
     const where = this.buildSearchWhere(request);
