@@ -10,13 +10,19 @@ function mockPrisma() {
     tenant: { findFirst: jest.fn(), findUnique: jest.fn() },
     contract: { findFirst: jest.fn() },
     maintenanceRequest: {
-      create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
-      count: jest.fn().mockResolvedValue(0),
     },
-    mandate: { findMany: jest.fn().mockResolvedValue([]) },
+  };
+}
+
+function mockRepository() {
+  return {
+    create: jest.fn(),
+    findWithPagination: jest.fn(),
+    findManagedPropertyIds: jest.fn().mockResolvedValue([]),
+    findByIdOrThrow: jest.fn(),
   };
 }
 
@@ -26,10 +32,6 @@ function mockNotificationRepo() {
 
 function mockEmailQueue() {
   return { sendEmail: jest.fn().mockResolvedValue(undefined) };
-}
-
-function mockMandateRepo() {
-  return { findActiveByManager: jest.fn() };
 }
 
 function mockStorage() {
@@ -77,34 +79,34 @@ const CREATE_DTO = {
 describe('MaintenanceService', () => {
   let service: MaintenanceService;
   let prisma: ReturnType<typeof mockPrisma>;
+  let repository: ReturnType<typeof mockRepository>;
   let notifRepo: ReturnType<typeof mockNotificationRepo>;
   let emailQueue: ReturnType<typeof mockEmailQueue>;
-  let mandateRepo: ReturnType<typeof mockMandateRepo>;
   let storage: ReturnType<typeof mockStorage>;
 
   beforeEach(() => {
     prisma = mockPrisma();
+    repository = mockRepository();
     notifRepo = mockNotificationRepo();
     emailQueue = mockEmailQueue();
-    mandateRepo = mockMandateRepo();
     storage = mockStorage();
     service = new MaintenanceService(
+      repository as never,
       prisma as never,
       notifRepo as never,
       emailQueue as never,
-      mandateRepo as never,
       storage as never,
     );
   });
 
-  // ── create ────────────────────────────────────────────────────────────────────
+  // ── createRequest ─────────────────────────────────────────────────────────────
 
-  describe('create', () => {
+  describe('createRequest', () => {
     it('OWNER can create a maintenance request for own property', async () => {
       prisma.property.findFirst.mockResolvedValue(PROPERTY);
-      prisma.maintenanceRequest.create.mockResolvedValue({ ...MAINTENANCE_REQUEST, tenantId: null });
+      repository.create.mockResolvedValue({ ...MAINTENANCE_REQUEST, tenantId: null });
 
-      const result = await service.create(OWNER_USER, CREATE_DTO);
+      const result = await service.createRequest(OWNER_USER, CREATE_DTO);
 
       expect(result.id).toBe('maint-1');
       expect(notifRepo.create).toHaveBeenCalledWith(
@@ -117,9 +119,9 @@ describe('MaintenanceService', () => {
       prisma.property.findFirst.mockResolvedValue(PROPERTY);
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
       prisma.contract.findFirst.mockResolvedValue({ id: 'contract-1' });
-      prisma.maintenanceRequest.create.mockResolvedValue(MAINTENANCE_REQUEST);
+      repository.create.mockResolvedValue(MAINTENANCE_REQUEST);
 
-      const result = await service.create(TENANT_USER, CREATE_DTO);
+      const result = await service.createRequest(TENANT_USER, CREATE_DTO);
 
       expect(result.tenantId).toBe('tenant-uuid-1');
     });
@@ -129,18 +131,18 @@ describe('MaintenanceService', () => {
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
       prisma.contract.findFirst.mockResolvedValue(null);
 
-      await expect(service.create(TENANT_USER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
+      await expect(service.createRequest(TENANT_USER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
     });
 
     it('CRITICAL urgency uses priority notification type', async () => {
       prisma.property.findFirst.mockResolvedValue(PROPERTY);
-      prisma.maintenanceRequest.create.mockResolvedValue({
+      repository.create.mockResolvedValue({
         ...MAINTENANCE_REQUEST,
         urgency: MaintenanceUrgency.CRITICAL,
         tenantId: null,
       });
 
-      await service.create(OWNER_USER, { ...CREATE_DTO, urgency: MaintenanceUrgency.CRITICAL });
+      await service.createRequest(OWNER_USER, { ...CREATE_DTO, urgency: MaintenanceUrgency.CRITICAL });
 
       expect(notifRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'maintenance_critical' }),
@@ -150,7 +152,7 @@ describe('MaintenanceService', () => {
     it('throws 404 when property not found', async () => {
       prisma.property.findFirst.mockResolvedValue(null);
 
-      await expect(service.create(OWNER_USER, CREATE_DTO)).rejects.toThrow(NotFoundException);
+      await expect(service.createRequest(OWNER_USER, CREATE_DTO)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -225,45 +227,44 @@ describe('MaintenanceService', () => {
     });
   });
 
-  // ── list ──────────────────────────────────────────────────────────────────────
+  // ── search ────────────────────────────────────────────────────────────────────
 
-  describe('list', () => {
+  describe('search', () => {
+    const PAGINATED = {
+      data: [MAINTENANCE_REQUEST],
+      meta: { total: 1, pageSize: 20, pageNumber: 0, totalPages: 1 },
+    };
+
     it('OWNER query filters by property.ownerId', async () => {
-      prisma.maintenanceRequest.findMany.mockResolvedValue([MAINTENANCE_REQUEST]);
-      prisma.maintenanceRequest.count.mockResolvedValue(1);
+      repository.findWithPagination.mockResolvedValue(PAGINATED);
 
-      const result = await service.list(OWNER_USER, {});
+      const result = await service.search(OWNER_USER, {});
 
       expect(result.data).toHaveLength(1);
-      expect(prisma.maintenanceRequest.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ property: { ownerId: 'owner-1' } }),
-        }),
+      expect(repository.findWithPagination).toHaveBeenCalledWith(
+        {},
+        { property: { ownerId: 'owner-1' } },
       );
     });
 
     it('ADMIN receives all requests without scope filter', async () => {
-      prisma.maintenanceRequest.findMany.mockResolvedValue([MAINTENANCE_REQUEST]);
-      prisma.maintenanceRequest.count.mockResolvedValue(1);
+      repository.findWithPagination.mockResolvedValue(PAGINATED);
 
-      const result = await service.list(ADMIN_USER, {});
+      const result = await service.search(ADMIN_USER, {});
 
       expect(result.data).toHaveLength(1);
-      const callArg = prisma.maintenanceRequest.findMany.mock.calls[0][0];
-      expect(callArg.where.property).toBeUndefined();
+      expect(repository.findWithPagination).toHaveBeenCalledWith({}, {});
     });
 
     it('MANAGER scopes to mandated properties', async () => {
-      prisma.mandate.findMany.mockResolvedValue([{ propertyId: 'prop-1' }, { propertyId: 'prop-2' }]);
-      prisma.maintenanceRequest.findMany.mockResolvedValue([]);
-      prisma.maintenanceRequest.count.mockResolvedValue(0);
+      repository.findManagedPropertyIds.mockResolvedValue([{ propertyId: 'prop-1' }, { propertyId: 'prop-2' }]);
+      repository.findWithPagination.mockResolvedValue({ data: [], meta: { total: 0, pageSize: 20, pageNumber: 0, totalPages: 0 } });
 
-      await service.list(MANAGER_USER, {});
+      await service.search(MANAGER_USER, {});
 
-      expect(prisma.maintenanceRequest.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ propertyId: { in: ['prop-1', 'prop-2'] } }),
-        }),
+      expect(repository.findWithPagination).toHaveBeenCalledWith(
+        {},
+        { propertyId: { in: ['prop-1', 'prop-2'] } },
       );
     });
   });

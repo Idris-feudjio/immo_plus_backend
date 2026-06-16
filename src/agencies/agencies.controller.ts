@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
@@ -16,7 +15,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { AddAgencyMemberDto, CreateAgencyDto, ListAgenciesDto } from './dto/agency.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
+import { AddAgencyMemberDto, CreateAgencyDto } from './dto/agency.dto';
 import { AgenciesService } from './agencies.service';
 
 @ApiTags('Agencies')
@@ -29,7 +29,7 @@ export class AgenciesController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new agency (ADMIN only)' })
   create(@Body() dto: CreateAgencyDto) {
-    return this.service.create(dto);
+    return this.service.createAgency(dto);
   }
 
   @Patch(':id/suspend')
@@ -40,18 +40,12 @@ export class AgenciesController {
     return this.service.suspend(id);
   }
 
-  @Get()
+  @Post('search')
   @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List agencies with member count (ADMIN only)' })
-  list(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const query: ListAgenciesDto = {
-      page: page !== undefined ? parseInt(page, 10) : undefined,
-      limit: limit !== undefined ? parseInt(limit, 10) : undefined,
-    };
-    return this.service.list(query);
+  search(@Body() body: SearchRequestDto) {
+    return this.service.search(body);
   }
 
   @Post(':id/members')

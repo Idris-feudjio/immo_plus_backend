@@ -7,7 +7,16 @@ import { ApplicationsService } from './applications.service';
 function mockPrisma() {
   return {
     property: { findFirst: jest.fn() },
-    application: { findMany: jest.fn(), count: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    application: { findUnique: jest.fn() },
+  };
+}
+
+function mockRepository() {
+  return {
+    create: jest.fn(),
+    update: jest.fn(),
+    findByIdOrThrow: jest.fn(),
+    findWithPagination: jest.fn(),
   };
 }
 
@@ -56,16 +65,19 @@ const APP_STUB = { id: 'app-1', propertyId: 'prop-1', status: ApplicationStatus.
 describe('ApplicationsService', () => {
   let service: ApplicationsService;
   let prisma: ReturnType<typeof mockPrisma>;
+  let repository: ReturnType<typeof mockRepository>;
   let notifRepo: ReturnType<typeof mockNotificationRepo>;
   let emailQueue: ReturnType<typeof mockEmailQueue>;
   let mandateRepo: ReturnType<typeof mockMandateRepo>;
 
   beforeEach(() => {
     prisma = mockPrisma();
+    repository = mockRepository();
     notifRepo = mockNotificationRepo();
     emailQueue = mockEmailQueue();
     mandateRepo = mockMandateRepo();
     service = new ApplicationsService(
+      repository as never,
       prisma as never,
       notifRepo as never,
       emailQueue as never,
@@ -78,7 +90,7 @@ describe('ApplicationsService', () => {
   describe('submit', () => {
     beforeEach(() => {
       prisma.property.findFirst.mockResolvedValue(PROPERTY_STUB);
-      prisma.application.create.mockResolvedValue({ id: 'app-1', status: 'PENDING' });
+      repository.create.mockResolvedValue({ id: 'app-1', status: 'PENDING' });
     });
 
     it('returns applicationId and PENDING status on success', async () => {
@@ -97,24 +109,20 @@ describe('ApplicationsService', () => {
 
     it('creates application with all DTO fields', async () => {
       await service.submit(SUBMIT_DTO);
-      expect(prisma.application.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: {
-            propertyId: 'prop-1',
-            firstName: 'Alice',
-            lastName: 'Ngo',
-            email: 'alice@test.cm',
-            phone: '699000001',
-            message: 'Je suis intéressée.',
-          },
-        }),
-      );
+      expect(repository.create).toHaveBeenCalledWith({
+        propertyId: 'prop-1',
+        firstName: 'Alice',
+        lastName: 'Ngo',
+        email: 'alice@test.cm',
+        phone: '699000001',
+        message: 'Je suis intéressée.',
+      });
     });
 
     it('throws NotFoundException when property is not published or not found', async () => {
       prisma.property.findFirst.mockResolvedValue(null);
       await expect(service.submit(SUBMIT_DTO)).rejects.toThrow(NotFoundException);
-      expect(prisma.application.create).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
     });
 
     it('creates in-app notification for owner', async () => {
@@ -149,62 +157,65 @@ describe('ApplicationsService', () => {
     });
   });
 
-  // ── listForProperty ───────────────────────────────────────────────────────
+  // ── search ───────────────────────────────────────────────────────────────
 
-  describe('listForProperty', () => {
+  describe('search', () => {
     const PROP_AUTH_STUB = { id: 'prop-1', ownerId: 'owner-1' };
+    const PAGINATED = { data: [APP_STUB], meta: { total: 1, pageSize: 20, pageNumber: 0, totalPages: 1 } };
 
     beforeEach(() => {
       prisma.property.findFirst.mockResolvedValue(PROP_AUTH_STUB);
-      prisma.application.findMany.mockResolvedValue([APP_STUB]);
-      prisma.application.count.mockResolvedValue(1);
+      repository.findWithPagination.mockResolvedValue(PAGINATED);
     });
 
     it('returns paginated result for OWNER of the property', async () => {
-      const result = await service.listForProperty(OWNER_USER as never, { propertyId: 'prop-1' });
-      expect(result).toEqual({ data: [APP_STUB], total: 1, page: 1, limit: 20 });
+      const result = await service.search(OWNER_USER as never, { filters: { propertyId: ['prop-1'] } });
+      expect(result.data).toEqual([APP_STUB]);
     });
 
     it('returns paginated result for ADMIN regardless of ownership', async () => {
       prisma.property.findFirst.mockResolvedValue({ id: 'prop-1', ownerId: 'someone-else' });
-      const result = await service.listForProperty(ADMIN_USER as never, { propertyId: 'prop-1' });
+      const result = await service.search(ADMIN_USER as never, { filters: { propertyId: ['prop-1'] } });
       expect(result.data).toEqual([APP_STUB]);
     });
 
     it('returns paginated result for MANAGER with active mandate', async () => {
       mandateRepo.findActiveByManager.mockResolvedValue({ id: 'mandate-1' });
-      const result = await service.listForProperty(MANAGER_USER as never, { propertyId: 'prop-1' });
+      const result = await service.search(MANAGER_USER as never, { filters: { propertyId: ['prop-1'] } });
       expect(result.data).toEqual([APP_STUB]);
     });
 
     it('throws ForbiddenException for OWNER who does not own the property', async () => {
       prisma.property.findFirst.mockResolvedValue({ id: 'prop-1', ownerId: 'other-owner' });
       await expect(
-        service.listForProperty(OWNER_USER as never, { propertyId: 'prop-1' }),
+        service.search(OWNER_USER as never, { filters: { propertyId: ['prop-1'] } }),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('throws ForbiddenException(NO_ACTIVE_MANDATE) for MANAGER without mandate', async () => {
       mandateRepo.findActiveByManager.mockResolvedValue(null);
       await expect(
-        service.listForProperty(MANAGER_USER as never, { propertyId: 'prop-1' }),
+        service.search(MANAGER_USER as never, { filters: { propertyId: ['prop-1'] } }),
       ).rejects.toThrow('NO_ACTIVE_MANDATE');
     });
 
     it('throws NotFoundException when property does not exist', async () => {
       prisma.property.findFirst.mockResolvedValue(null);
       await expect(
-        service.listForProperty(OWNER_USER as never, { propertyId: 'prop-x' }),
+        service.search(OWNER_USER as never, { filters: { propertyId: ['prop-x'] } }),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('applies status filter when provided', async () => {
-      await service.listForProperty(OWNER_USER as never, { propertyId: 'prop-1', status: ApplicationStatus.PENDING });
-      expect(prisma.application.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ status: ApplicationStatus.PENDING }),
-        }),
-      );
+    it('throws NotFoundException when no propertyId in filters', async () => {
+      await expect(
+        service.search(OWNER_USER as never, {}),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('passes the query with filters to repository', async () => {
+      const query = { filters: { propertyId: ['prop-1'], status: [ApplicationStatus.PENDING] } };
+      await service.search(OWNER_USER as never, query);
+      expect(repository.findWithPagination).toHaveBeenCalledWith(query, { propertyId: 'prop-1' });
     });
   });
 
@@ -216,20 +227,18 @@ describe('ApplicationsService', () => {
     beforeEach(() => {
       prisma.application.findUnique.mockResolvedValue(APP_STUB);
       prisma.property.findFirst.mockResolvedValue(PROP_AUTH_STUB);
-      prisma.application.update.mockResolvedValue({ ...APP_STUB, status: ApplicationStatus.ACCEPTED });
+      repository.findByIdOrThrow.mockResolvedValue(APP_STUB);
+      repository.update.mockResolvedValue({ ...APP_STUB, status: ApplicationStatus.ACCEPTED });
     });
 
     it('returns updated application with ACCEPTED status', async () => {
       const result = await service.updateStatus(OWNER_USER as never, 'app-1', ApplicationStatus.ACCEPTED);
       expect(result.status).toBe(ApplicationStatus.ACCEPTED);
-      expect(prisma.application.update).toHaveBeenCalledWith({
-        where: { id: 'app-1' },
-        data: { status: ApplicationStatus.ACCEPTED },
-      });
+      expect(repository.update).toHaveBeenCalledWith('app-1', { status: ApplicationStatus.ACCEPTED });
     });
 
     it('returns updated application with REJECTED status', async () => {
-      prisma.application.update.mockResolvedValue({ ...APP_STUB, status: ApplicationStatus.REJECTED });
+      repository.update.mockResolvedValue({ ...APP_STUB, status: ApplicationStatus.REJECTED });
       const result = await service.updateStatus(OWNER_USER as never, 'app-1', ApplicationStatus.REJECTED);
       expect(result.status).toBe(ApplicationStatus.REJECTED);
     });
@@ -239,7 +248,7 @@ describe('ApplicationsService', () => {
       await expect(
         service.updateStatus(OWNER_USER as never, 'bad-id', ApplicationStatus.ACCEPTED),
       ).rejects.toThrow(NotFoundException);
-      expect(prisma.application.update).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
     });
 
     it('throws ForbiddenException for OWNER who does not own the property', async () => {
@@ -247,7 +256,7 @@ describe('ApplicationsService', () => {
       await expect(
         service.updateStatus(OWNER_USER as never, 'app-1', ApplicationStatus.ACCEPTED),
       ).rejects.toThrow(ForbiddenException);
-      expect(prisma.application.update).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
     });
 
     it('throws ForbiddenException for MANAGER without mandate', async () => {

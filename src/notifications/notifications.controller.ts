@@ -6,12 +6,13 @@ import {
   HttpStatus,
   Param,
   Patch,
+  Post,
   Put,
-  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import { NotificationsService } from './notifications.service';
 
 @ApiTags('Notifications')
@@ -19,13 +20,11 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
 
-  @Get()
+  @Post('search')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liste des notifications' })
-  list(
-    @CurrentUser() user: AuthUser,
-    @Query() query: { isRead?: boolean; type?: string; page?: number; limit?: number },
-  ) {
-    return this.service.list(user.id, query);
+  search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
+    return this.service.search(user.id, body);
   }
 
   @Get('count')

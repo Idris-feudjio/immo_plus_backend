@@ -1,13 +1,11 @@
 import {
   Body,
   Controller,
-  Get,
   HttpCode,
   HttpStatus,
   Param,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -18,6 +16,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { TurnstileGuard } from '../common/guards/turnstile.guard.js';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
 import { ApplicationsService, SubmitApplicationDto } from './applications.service';
 
 @ApiTags('Applications')
@@ -35,22 +34,12 @@ export class ApplicationsController {
     return this.service.submit(dto);
   }
 
-  @Get()
+  @Post('search')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Lister les candidatures d\'un bien (Owner/Manager/Admin)' })
-  listForProperty(
-    @CurrentUser() user: AuthUser,
-    @Query('propertyId') propertyId: string,
-    @Query('status') status?: ApplicationStatus,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.service.listForProperty(user, {
-      propertyId,
-      status,
-      page: page !== undefined ? parseInt(page, 10) : undefined,
-      limit: limit !== undefined ? parseInt(limit, 10) : undefined,
-    });
+  search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
+    return this.service.search(user, body);
   }
 
   @Patch(':id/accept')

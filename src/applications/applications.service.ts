@@ -3,12 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ApplicationStatus, Prisma, Role } from '@prisma/client';
+import { Application, ApplicationStatus, Role } from '@prisma/client';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
+import { BaseService } from '../common/abstractions/base.service';
 import { MandateRepository } from '../mandates/mandate.repository';
 import { EmailQueueService } from '../notifications/email-queue.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import { PrismaService } from '../prisma/prisma.service';
+import { ApplicationCreateData, ApplicationRepository } from './application.repository';
 
 export class SubmitApplicationDto {
   firstName: string;
@@ -20,21 +24,17 @@ export class SubmitApplicationDto {
   turnstileToken?: string;
 }
 
-export class ListApplicationsQuery {
-  propertyId: string;
-  status?: ApplicationStatus;
-  page?: number;
-  limit?: number;
-}
-
 @Injectable()
-export class ApplicationsService {
+export class ApplicationsService extends BaseService<Application, ApplicationCreateData> {
   constructor(
+    protected override readonly repository: ApplicationRepository,
     private readonly prisma: PrismaService,
     private readonly notificationRepo: NotificationRepository,
     private readonly emailQueue: EmailQueueService,
     private readonly mandateRepo: MandateRepository,
-  ) {}
+  ) {
+    super(repository);
+  }
 
   async submit(dto: SubmitApplicationDto) {
     const property = await this.prisma.property.findFirst({
@@ -49,16 +49,13 @@ export class ApplicationsService {
     });
     if (!property) throw new NotFoundException('PROPERTY_NOT_FOUND');
 
-    const application = await this.prisma.application.create({
-      data: {
-        propertyId: dto.propertyId,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        email: dto.email,
-        phone: dto.phone,
-        message: dto.message,
-      },
-      select: { id: true, status: true },
+    const application = await this.repository.create({
+      propertyId: dto.propertyId,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      email: dto.email,
+      phone: dto.phone,
+      message: dto.message,
     });
 
     const recipients = [property.owner, ...(property.manager ? [property.manager] : [])];
@@ -92,26 +89,12 @@ export class ApplicationsService {
     return { applicationId: application.id, status: application.status };
   }
 
-  async listForProperty(user: AuthUser, query: ListApplicationsQuery) {
-    const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+  async search(user: AuthUser, query: ISearchRequest): Promise<PaginatedResult<Application>> {
+    const propertyId = query.filters?.propertyId?.[0];
+    if (!propertyId) throw new NotFoundException('PROPERTY_NOT_FOUND');
 
-    await this.authorizeProperty(user, query.propertyId);
-
-    const where: Prisma.ApplicationWhereInput = { propertyId: query.propertyId };
-    if (query.status) where.status = query.status;
-
-    const [data, total] = await Promise.all([
-      this.prisma.application.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.application.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
+    await this.authorizeProperty(user, propertyId);
+    return this.findWithPagination(query, { propertyId });
   }
 
   async updateStatus(user: AuthUser, id: string, status: ApplicationStatus) {
@@ -122,8 +105,7 @@ export class ApplicationsService {
     if (!application) throw new NotFoundException('APPLICATION_NOT_FOUND');
 
     await this.authorizeProperty(user, application.propertyId);
-
-    return this.prisma.application.update({ where: { id }, data: { status } });
+    return this.update(id, { status } as Partial<ApplicationCreateData>);
   }
 
   private async authorizeProperty(user: AuthUser, propertyId: string) {

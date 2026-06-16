@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Notification, NotificationPreference, PaymentAlertConfig } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
 import { NotificationCreateData, NotificationRepository } from './notification.repository';
 
 @Injectable()
@@ -10,11 +11,8 @@ export class NotificationsService extends BaseService<Notification, Notification
     super(repository);
   }
 
-  list(
-    userId: string,
-    query: { isRead?: boolean; type?: string; page?: number; limit?: number },
-  ): Promise<PaginatedResult<Notification>> {
-    return this.repository.findPaginated(userId, query);
+  search(userId: string, query: ISearchRequest): Promise<PaginatedResult<Notification>> {
+    return this.findWithPagination(query, { userId });
   }
 
   markRead(userId: string, id: string): Promise<Notification> {

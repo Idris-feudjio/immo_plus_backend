@@ -9,35 +9,35 @@ import {
   MaintenanceRequest,
   MaintenanceStatus,
   MaintenanceUrgency,
-  MandateStatus,
-  Prisma,
   Role,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { MandateRepository } from '../mandates/mandate.repository';
+import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
+import { BaseService } from '../common/abstractions/base.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import type {
-  CreateMaintenanceDto,
-  FilterMaintenanceDto,
-  UpdateMaintenanceStatusDto,
-} from './dto/maintenance.dto';
+import type { CreateMaintenanceDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
+import { MaintenanceCreateData, MaintenanceRepository } from './maintenance.repository';
+
 @Injectable()
-export class MaintenanceService {
+export class MaintenanceService extends BaseService<MaintenanceRequest, MaintenanceCreateData> {
   constructor(
+    protected override readonly repository: MaintenanceRepository,
     private readonly prisma: PrismaService,
     private readonly notificationRepo: NotificationRepository,
     private readonly emailQueue: EmailQueueService,
-    private readonly mandateRepo: MandateRepository,
     private readonly storage: StorageService,
-  ) {}
+  ) {
+    super(repository);
+  }
 
   // ── Story 6.1: Create maintenance request ────────────────────────────────────
 
-  async create(user: AuthUser, dto: CreateMaintenanceDto): Promise<MaintenanceRequest> {
+  async createRequest(user: AuthUser, dto: CreateMaintenanceDto): Promise<MaintenanceRequest> {
     const property = await this.prisma.property.findFirst({
       where: { id: dto.propertyId, deletedAt: null },
       select: {
@@ -56,11 +56,7 @@ export class MaintenanceService {
       if (!tenant) throw new ForbiddenException('TENANT_NOT_FOUND');
 
       const contract = await this.prisma.contract.findFirst({
-        where: {
-          propertyId: dto.propertyId,
-          tenantId: tenant.id,
-          status: ContractStatus.ACTIVE,
-        },
+        where: { propertyId: dto.propertyId, tenantId: tenant.id, status: ContractStatus.ACTIVE },
         select: { id: true },
       });
       if (!contract) throw new ForbiddenException('NO_ACTIVE_CONTRACT');
@@ -69,20 +65,19 @@ export class MaintenanceService {
     } else if (user.role === Role.OWNER) {
       if (property.ownerId !== user.id) throw new ForbiddenException('NOT_PROPERTY_OWNER');
     } else if (user.role === Role.MANAGER) {
-      const mandate = await this.mandateRepo.findActiveByManager(user.id, dto.propertyId);
-      if (!mandate) throw new ForbiddenException('NO_ACTIVE_MANDATE');
+      const mandates = await this.repository.findManagedPropertyIds(user.id);
+      if (!mandates.some((m) => m.propertyId === dto.propertyId)) {
+        throw new ForbiddenException('NO_ACTIVE_MANDATE');
+      }
     }
-    // ADMIN: unrestricted
 
-    const request = await this.prisma.maintenanceRequest.create({
-      data: {
-        propertyId: dto.propertyId,
-        tenantId,
-        title: dto.title,
-        description: dto.description,
-        urgency: dto.urgency ?? MaintenanceUrgency.NORMAL,
-        images: dto.images ?? [],
-      },
+    const request = await this.repository.create({
+      propertyId: dto.propertyId,
+      tenantId,
+      title: dto.title,
+      description: dto.description,
+      urgency: dto.urgency ?? MaintenanceUrgency.NORMAL,
+      images: dto.images ?? [],
     });
 
     const isCritical = request.urgency === MaintenanceUrgency.CRITICAL;
@@ -140,31 +135,25 @@ export class MaintenanceService {
     const tenantStatuses: MaintenanceStatus[] = [MaintenanceStatus.CLOSED, MaintenanceStatus.OPEN];
 
     if (ownerManagerStatuses.includes(dto.status)) {
-      // OPEN → IN_PROGRESS or IN_PROGRESS → RESOLVED: Owner / Manager / Admin only
       if (user.role === Role.TENANT) throw new ForbiddenException('TENANT_CANNOT_SET_STATUS');
 
       if (user.role === Role.OWNER && existing.property.ownerId !== user.id) {
         throw new ForbiddenException('NOT_PROPERTY_OWNER');
       }
       if (user.role === Role.MANAGER) {
-        const mandate = await this.mandateRepo.findActiveByManager(user.id, existing.propertyId);
-        if (!mandate) throw new ForbiddenException('NO_ACTIVE_MANDATE');
+        const mandates = await this.repository.findManagedPropertyIds(user.id);
+        if (!mandates.some((m) => m.propertyId === existing.propertyId)) {
+          throw new ForbiddenException('NO_ACTIVE_MANDATE');
+        }
       }
 
-      if (
-        dto.status === MaintenanceStatus.IN_PROGRESS &&
-        existing.status !== MaintenanceStatus.OPEN
-      ) {
+      if (dto.status === MaintenanceStatus.IN_PROGRESS && existing.status !== MaintenanceStatus.OPEN) {
         throw new BadRequestException('INVALID_TRANSITION');
       }
-      if (
-        dto.status === MaintenanceStatus.RESOLVED &&
-        existing.status !== MaintenanceStatus.IN_PROGRESS
-      ) {
+      if (dto.status === MaintenanceStatus.RESOLVED && existing.status !== MaintenanceStatus.IN_PROGRESS) {
         throw new BadRequestException('INVALID_TRANSITION');
       }
     } else if (tenantStatuses.includes(dto.status)) {
-      // RESOLVED → CLOSED or RESOLVED → OPEN (reopen): Tenant / Admin only
       if (user.role !== Role.TENANT && user.role !== Role.ADMIN) {
         throw new ForbiddenException('ONLY_TENANT_CAN_SET_STATUS');
       }
@@ -189,7 +178,6 @@ export class MaintenanceService {
       },
     });
 
-    // Notify tenant if linked
     if (existing.tenantId) {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: existing.tenantId },
@@ -232,46 +220,17 @@ export class MaintenanceService {
 
   // ── Story 6.3: List maintenance requests ─────────────────────────────────────
 
-  async list(
-    user: AuthUser,
-    query: FilterMaintenanceDto,
-  ): Promise<{ data: MaintenanceRequest[]; total: number; page: number; limit: number }> {
-    const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
-
-    const where: Prisma.MaintenanceRequestWhereInput = {};
+  async search(user: AuthUser, query: ISearchRequest): Promise<PaginatedResult<MaintenanceRequest>> {
+    let baseWhere: Record<string, unknown> = {};
 
     if (user.role === Role.OWNER) {
-      where.property = { ownerId: user.id };
+      baseWhere = { property: { ownerId: user.id } };
     } else if (user.role === Role.MANAGER) {
-      const mandates = await this.prisma.mandate.findMany({
-        where: { managerId: user.id, status: MandateStatus.ACTIVE, deletedAt: null },
-        select: { propertyId: true },
-      });
-      const managedIds = mandates.map((m) => m.propertyId);
-      where.propertyId =
-        query.propertyId && managedIds.includes(query.propertyId)
-          ? query.propertyId
-          : { in: managedIds };
+      const mandates = await this.repository.findManagedPropertyIds(user.id);
+      baseWhere = { propertyId: { in: mandates.map((m) => m.propertyId) } };
     }
-    // ADMIN: no scope restriction
 
-    if (user.role !== Role.MANAGER && query.propertyId) where.propertyId = query.propertyId;
-    if (query.status) where.status = query.status;
-    if (query.urgency) where.urgency = query.urgency;
-
-    const [data, total] = await Promise.all([
-      this.prisma.maintenanceRequest.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        include: { property: { select: { id: true, title: true } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.maintenanceRequest.count({ where }),
-    ]);
-
-    return { data: data as MaintenanceRequest[], total, page, limit };
+    return this.findWithPagination(query, baseWhere);
   }
 
   // ── Story 6.4: Tenant self-service view ──────────────────────────────────────
@@ -324,7 +283,6 @@ export class MaintenanceService {
     } else if (user.role === Role.OWNER) {
       if (existing.property.ownerId !== user.id) throw new ForbiddenException('NOT_PROPERTY_OWNER');
     }
-    // ADMIN: unrestricted
 
     if (!files || files.length === 0) throw new BadRequestException('NO_FILES');
     if (files.length > 3) throw new BadRequestException('TOO_MANY_FILES');

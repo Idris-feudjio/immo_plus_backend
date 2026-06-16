@@ -12,11 +12,7 @@ import { AgenciesService } from './agencies.service';
 function mockPrisma() {
   return {
     agency: {
-      create: jest.fn(),
       findUnique: jest.fn(),
-      update: jest.fn(),
-      findMany: jest.fn().mockResolvedValue([]),
-      count: jest.fn().mockResolvedValue(0),
     },
     agencyMember: {
       findFirst: jest.fn(),
@@ -29,6 +25,15 @@ function mockPrisma() {
     mandate: {
       count: jest.fn().mockResolvedValue(0),
     },
+  };
+}
+
+function mockRepository() {
+  return {
+    create: jest.fn(),
+    update: jest.fn(),
+    findByIdOrThrow: jest.fn(),
+    findWithPagination: jest.fn(),
   };
 }
 
@@ -67,30 +72,30 @@ const MEMBER_STUB = {
 describe('AgenciesService', () => {
   let service: AgenciesService;
   let prisma: ReturnType<typeof mockPrisma>;
+  let repository: ReturnType<typeof mockRepository>;
   let cache: ReturnType<typeof mockCache>;
 
   beforeEach(() => {
     prisma = mockPrisma();
+    repository = mockRepository();
     cache = mockCache();
-    service = new AgenciesService(prisma as never, cache as never);
+    service = new AgenciesService(repository as never, prisma as never, cache as never);
   });
 
-  // ── create ─────────────────────────────────────────────────────────────────
+  // ── createAgency ───────────────────────────────────────────────────────────
 
-  describe('create', () => {
+  describe('createAgency', () => {
     it('creates agency with ACTIVE status', async () => {
-      prisma.agency.create.mockResolvedValue(AGENCY_STUB);
+      repository.create.mockResolvedValue(AGENCY_STUB);
 
-      const result = await service.create({
+      const result = await service.createAgency({
         name: 'Immo Pro',
         email: 'agency@immo.cm',
         phone: '+237600000000',
       });
 
-      expect(prisma.agency.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: AgencyStatus.ACTIVE }),
-        }),
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ status: AgencyStatus.ACTIVE }),
       );
       expect(result).toEqual(AGENCY_STUB);
     });
@@ -102,13 +107,12 @@ describe('AgenciesService', () => {
     it('suspends an existing agency', async () => {
       prisma.agency.findUnique.mockResolvedValue({ id: 'agency-1' });
       const suspended = { ...AGENCY_STUB, status: AgencyStatus.SUSPENDED };
-      prisma.agency.update.mockResolvedValue(suspended);
+      repository.findByIdOrThrow.mockResolvedValue(AGENCY_STUB);
+      repository.update.mockResolvedValue(suspended);
 
       const result = await service.suspend('agency-1');
 
-      expect(prisma.agency.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: AgencyStatus.SUSPENDED } }),
-      );
+      expect(repository.update).toHaveBeenCalledWith('agency-1', { status: AgencyStatus.SUSPENDED });
       expect(result.status).toBe(AgencyStatus.SUSPENDED);
     });
 
@@ -119,32 +123,32 @@ describe('AgenciesService', () => {
     });
   });
 
-  // ── list ───────────────────────────────────────────────────────────────────
+  // ── search ─────────────────────────────────────────────────────────────────
 
-  describe('list', () => {
+  describe('search', () => {
     it('returns paginated agencies with member count', async () => {
       const agencyWithCount = { ...AGENCY_STUB, _count: { members: 2 } };
-      prisma.agency.findMany.mockResolvedValue([agencyWithCount]);
-      prisma.agency.count.mockResolvedValue(1);
+      repository.findWithPagination.mockResolvedValue({
+        data: [agencyWithCount],
+        meta: { total: 1, pageSize: 10, pageNumber: 0, totalPages: 1 },
+      });
 
-      const result = await service.list({ page: 1, limit: 10 });
+      const result = await service.search({ pageNumber: 0, pageSize: 10 });
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
-      expect(prisma.agency.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ include: { _count: { select: { members: true } } } }),
-      );
+      expect(repository.findWithPagination).toHaveBeenCalledWith({ pageNumber: 0, pageSize: 10 }, {});
     });
 
-    it('applies default pagination when no query provided', async () => {
-      prisma.agency.findMany.mockResolvedValue([]);
-      prisma.agency.count.mockResolvedValue(0);
+    it('delegates to repository with empty baseWhere', async () => {
+      repository.findWithPagination.mockResolvedValue({
+        data: [],
+        meta: { total: 0, pageSize: 20, pageNumber: 0, totalPages: 0 },
+      });
 
-      await service.list({});
+      await service.search({});
 
-      expect(prisma.agency.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ skip: 0, take: 10 }),
-      );
+      expect(repository.findWithPagination).toHaveBeenCalledWith({}, {});
     });
   });
 

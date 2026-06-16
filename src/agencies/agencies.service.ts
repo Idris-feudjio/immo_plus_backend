@@ -8,67 +8,42 @@ import {
 import { Agency, AgencyMember, AgencyMemberRole, AgencyStatus, MandateStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { BaseService } from '../common/abstractions/base.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { AddAgencyMemberDto, CreateAgencyDto, ListAgenciesDto } from './dto/agency.dto';
+import type { ISearchRequest } from '../common/interfaces/search-request.interface';
+import type { AddAgencyMemberDto, CreateAgencyDto } from './dto/agency.dto';
 import type { PublicAgencyProfile } from './dto/agency.dto';
+import { AgencyCreateData, AgencyRepository } from './agency.repository';
 
 @Injectable()
-export class AgenciesService {
+export class AgenciesService extends BaseService<Agency, AgencyCreateData> {
   constructor(
+    protected override readonly repository: AgencyRepository,
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
-  ) {}
+  ) {
+    super(repository);
+  }
 
-  async create(dto: CreateAgencyDto): Promise<Agency> {
-    return this.prisma.agency.create({
-      data: {
-        name: dto.name,
-        email: dto.email,
-        phone: dto.phone,
-        address: dto.address,
-        rccm: dto.rccm,
-        status: AgencyStatus.ACTIVE,
-      },
+  async createAgency(dto: CreateAgencyDto): Promise<Agency> {
+    return this.repository.create({
+      name: dto.name,
+      email: dto.email,
+      phone: dto.phone,
+      address: dto.address,
+      rccm: dto.rccm,
+      status: AgencyStatus.ACTIVE,
     });
   }
 
   async suspend(id: string): Promise<Agency> {
     const existing = await this.prisma.agency.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw new NotFoundException('AGENCY_NOT_FOUND');
-
-    return this.prisma.agency.update({
-      where: { id },
-      data: { status: AgencyStatus.SUSPENDED },
-    });
+    return this.update(id, { status: AgencyStatus.SUSPENDED });
   }
 
-  async list(query: ListAgenciesDto): Promise<PaginatedResult<Agency & { _count: { members: number } }>> {
-    const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 10));
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.AgencyWhereInput = {};
-
-    const [data, total] = await Promise.all([
-      this.prisma.agency.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: { _count: { select: { members: true } } },
-      }),
-      this.prisma.agency.count({ where }),
-    ]);
-
-    return {
-      data: data as (Agency & { _count: { members: number } })[],
-      meta: {
-        total,
-        pageNumber: page - 1,
-        pageSize: limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+  search(query: ISearchRequest): Promise<PaginatedResult<Agency>> {
+    return this.findWithPagination(query, {});
   }
 
   async addMember(
@@ -77,11 +52,9 @@ export class AgenciesService {
     requesterRole: string,
     dto: AddAgencyMemberDto,
   ): Promise<AgencyMember> {
-    // Check agency exists
     const agency = await this.prisma.agency.findUnique({ where: { id: agencyId }, select: { id: true } });
     if (!agency) throw new NotFoundException('AGENCY_NOT_FOUND');
 
-    // Auth check: must be ADMIN or agency ADMIN member
     if (requesterRole !== Role.ADMIN) {
       const requesterMembership = await this.prisma.agencyMember.findFirst({
         where: { agencyId, userId: requesterId, role: AgencyMemberRole.ADMIN },
@@ -90,12 +63,10 @@ export class AgenciesService {
       if (!requesterMembership) throw new ForbiddenException('INSUFFICIENT_PERMISSIONS');
     }
 
-    // Validate user exists and is a MANAGER
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId }, select: { id: true, role: true } });
     if (!user) throw new NotFoundException('USER_NOT_FOUND');
     if (user.role !== Role.MANAGER) throw new UnprocessableEntityException('USER_NOT_MANAGER');
 
-    // Check for duplicate (userId is unique in AgencyMember)
     try {
       return await this.prisma.agencyMember.create({
         data: {

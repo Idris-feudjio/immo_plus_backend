@@ -7,7 +7,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
@@ -17,7 +16,8 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import { CreateMaintenanceDto, FilterMaintenanceDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
+import { SearchRequestDto } from '../common/dto/pagination.dto';
+import { CreateMaintenanceDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
 import { MaintenanceService } from './maintenance.service';
 
 @ApiTags('Maintenance')
@@ -36,11 +36,12 @@ export class MaintenanceController {
 
   // ── Story 6.3: List with filters ─────────────────────────────────────────────
 
-  @Get()
+  @Post('search')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liste des demandes de maintenance' })
-  list(@CurrentUser() user: AuthUser, @Query() query: FilterMaintenanceDto) {
-    return this.service.list(user, query);
+  search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
+    return this.service.search(user, body);
   }
 
   // ── Story 6.1: Create ─────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ export class MaintenanceController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Créer une demande de maintenance' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateMaintenanceDto) {
-    return this.service.create(user, dto);
+    return this.service.createRequest(user, dto);
   }
 
   // ── Story 6.2: Update status ──────────────────────────────────────────────────
