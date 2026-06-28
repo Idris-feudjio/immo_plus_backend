@@ -57,6 +57,16 @@ export class CacheService implements OnModuleDestroy {
     } catch { /* no-op */ }
   }
 
+  async incr(key: string, ttlSeconds: number): Promise<number> {
+    if (!this.available) return 0;
+    try {
+      await this.client.set(key, '0', 'EX', ttlSeconds, 'NX');
+      return await this.client.incr(key);
+    } catch {
+      return 0;
+    }
+  }
+
   async delByPrefix(prefix: string): Promise<void> {
     if (!this.available) return;
     try {

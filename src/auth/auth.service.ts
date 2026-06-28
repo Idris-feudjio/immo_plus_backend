@@ -1,6 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -9,8 +12,10 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import { randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from '../notifications/email-queue.service.js';
+import { CacheService } from '../cache/cache.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
@@ -23,6 +28,7 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private emailQueue: EmailQueueService,
+    private cache: CacheService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -60,10 +66,11 @@ export class AuthService {
         passwordHash,
         role: dto.role,
       },
+      select: { id: true, firstName: true, email: true },
     });
 
     const otp = this.generateOtp();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await this.prisma.otpCode.create({
       data: { userId: user.id, code: otp, expiresAt },
@@ -86,24 +93,51 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable.');
 
+    if (user.emailVerified) {
+      return { message: 'Email déjà vérifié.' };
+    }
+
+    const attemptsKey = `otp_attempts:${user.id}`;
+
+    // Pre-check: reject immediately if 3+ failed attempts already recorded
+    const currentAttempts = await this.cache.get<number>(attemptsKey);
+    if (currentAttempts !== null && currentAttempts >= 3) {
+      throw new BadRequestException({ error: 'OTP_MAX_ATTEMPTS', message: 'Trop de tentatives. Demandez un nouveau code.' });
+    }
+
+    // Find OTP by code WITHOUT expiry filter — allows distinguishing expired vs wrong code
     const otpRecord = await this.prisma.otpCode.findFirst({
-      where: {
-        userId: user.id,
-        code: dto.otp,
-        usedAt: null,
-        expiresAt: { gt: new Date() },
-      },
+      where: { userId: user.id, code: dto.otp, usedAt: null },
       orderBy: { createdAt: 'desc' },
+      select: { id: true, expiresAt: true },
     });
 
     if (!otpRecord) {
-      throw new BadRequestException({ error: 'OTP_INVALID', message: 'Code OTP invalide ou expiré.' });
+      const count = await this.cache.incr(attemptsKey, 600);
+      if (count >= 3) {
+        await this.prisma.otpCode.updateMany({
+          where: { userId: user.id, usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        throw new BadRequestException({ error: 'OTP_MAX_ATTEMPTS', message: 'Trop de tentatives. Demandez un nouveau code.' });
+      }
+      throw new BadRequestException({ error: 'OTP_INVALID', message: 'Code OTP incorrect.' });
     }
+
+    if (otpRecord.expiresAt < new Date()) {
+      throw new BadRequestException({ error: 'OTP_EXPIRED', message: 'Code OTP expiré. Demandez un nouveau code.' });
+    }
+
+    await this.cache.del(attemptsKey);
 
     await this.prisma.otpCode.update({
       where: { id: otpRecord.id },
       data: { usedAt: new Date() },
     });
+
+    if (!user.isActive) {
+      throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -123,11 +157,17 @@ export class AuthService {
     });
 
     if (recentAttempts >= 3) {
-      throw new BadRequestException('Trop de tentatives. Réessayez dans 10 minutes.');
+      throw new BadRequestException({ error: 'OTP_RESEND_LIMIT', message: 'Trop de tentatives. Réessayez dans 10 minutes.' });
     }
 
+    await this.prisma.otpCode.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    await this.cache.del(`otp_attempts:${userId}`);
+
     const otp = this.generateOtp();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await this.prisma.otpCode.create({ data: { userId, code: otp, expiresAt } });
 
@@ -143,19 +183,53 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     const email = dto.email.toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, firstName: true, passwordHash: true, emailVerified: true, isActive: true, role: true },
+    });
 
-    if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
-      throw new UnauthorizedException('Email ou mot de passe incorrect.');
+    if (!user) {
+      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Email ou mot de passe incorrect.' });
+    }
+
+    const locked = await this.cache.get<boolean>(`login_locked:${user.id}`);
+    if (locked) {
+      throw new HttpException(
+        { error: 'LOGIN_LOCKED', message: 'Compte verrouillé, réessayez dans 30 minutes.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const passwordOk = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordOk) {
+      const attemptsKey = `login_attempts:${user.id}`;
+      const count = await this.cache.incr(attemptsKey, 1800);
+      if (count >= 5) {
+        await this.cache.set(`login_locked:${user.id}`, true, 1800);
+        await this.cache.del(attemptsKey);
+        this.emailQueue.sendEmail({
+          to: user.email,
+          subject: 'Votre compte Immo Plus CM a été verrouillé',
+          template: 'account-locked',
+          data: { name: user.firstName, unlockTime: '30 minutes' },
+        }).catch(() => {});
+        throw new HttpException(
+          { error: 'LOGIN_LOCKED', message: 'Compte verrouillé, réessayez dans 30 minutes.' },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Email ou mot de passe incorrect.' });
     }
 
     if (!user.emailVerified) {
-      throw new UnauthorizedException({ error: 'EMAIL_NOT_VERIFIED', message: 'Email non vérifié.' });
+      throw new ForbiddenException({ error: 'PENDING_VERIFICATION', message: 'Vérifiez votre email avant de vous connecter.' });
+    }
+    if (!user.isActive) {
+      throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('Compte désactivé.');
-    }
+    await this.cache.del(`login_attempts:${user.id}`);
+    await this.cache.del(`login_locked:${user.id}`);
 
     return this.generateAuthResponse(user.id, user.email, user.role);
   }
@@ -260,7 +334,7 @@ export class AuthService {
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   private generateOtp(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
   }
 
   private async generateAuthResponse(userId: string, email: string, role: string) {
