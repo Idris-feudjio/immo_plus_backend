@@ -20,7 +20,11 @@
       "Bash(python3 \"c:/Users/idris/Documents/Projects/immo-plus-backend/_bmad/scripts/resolve_customization.py\" --skill \"c:/Users/idris/Documents/Projects/immo-plus-backend/.claude/skills/bmad-edit-prd\" --key workflow)",
       "Bash(python3 \"c:/Users/idris/Documents/Projects/immo-plus-backend/_bmad/scripts/resolve_customization.py\" --skill \"c:/Users/idris/Documents/Projects/immo-plus-backend/.claude/skills/bmad-agent-pm\" --key agent)",
       "Bash(git -C \"c:/Users/idris/Documents/Projects/immo-plus-backend\" log --oneline -8)",
-      "Bash(npm list *)"
+      "Bash(npm list *)",
+      "Bash(mkdir -p \"c:/Users/idris/Documents/Projects/immo-plus-backend/docs\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\idris\\Documents\\Projects\\immo-plus-backend\\docs"
     ]
   }
 }
