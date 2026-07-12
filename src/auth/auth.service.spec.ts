@@ -548,3 +548,113 @@ describe('AuthService — changePassword()', () => {
     expect(prismaUser.findUnique).not.toHaveBeenCalled();
   });
 });
+
+// ─── logout() ─────────────────────────────────────────────────────────────────
+
+describe('AuthService — logout()', () => {
+  let service: AuthService;
+  let prismaRefresh: { updateMany: jest.Mock };
+
+  beforeEach(async () => {
+    prismaRefresh = { updateMany: jest.fn().mockResolvedValue({ count: 1 }) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: { refreshToken: prismaRefresh } },
+        { provide: JwtService, useValue: { sign: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: EmailQueueService, useValue: { sendEmail: jest.fn() } },
+        { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn(), incr: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  it('AC#1 — révoque le refresh token courant de l\'utilisateur', async () => {
+    const result = await service.logout('uid-1', 'refresh-token-abc');
+
+    expect(prismaRefresh.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'uid-1', token: 'refresh-token-abc', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(result).toHaveProperty('message');
+  });
+});
+
+// ─── refresh() ────────────────────────────────────────────────────────────────
+
+describe('AuthService — refresh()', () => {
+  let service: AuthService;
+  let prismaUser: { findUnique: jest.Mock };
+  let prismaRefresh: { findUnique: jest.Mock; update: jest.Mock; create: jest.Mock };
+
+  const TOKEN_RECORD = {
+    id: 'rt-1',
+    revokedAt: null,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    user: { id: 'uid-1', email: 'user@test.com', role: 'OWNER' as const },
+  };
+
+  beforeEach(async () => {
+    prismaUser = { findUnique: jest.fn().mockResolvedValue({ id: 'uid-1', email: 'user@test.com', role: 'OWNER' }) };
+    prismaRefresh = {
+      findUnique: jest.fn().mockResolvedValue(TOKEN_RECORD),
+      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({}),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: { user: prismaUser, refreshToken: prismaRefresh } },
+        { provide: JwtService, useValue: { sign: jest.fn().mockReturnValue('tok') } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('1h') } },
+        { provide: EmailQueueService, useValue: { sendEmail: jest.fn() } },
+        { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn(), incr: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  it('AC#2 — token introuvable → 401 REFRESH_TOKEN_INVALID', async () => {
+    prismaRefresh.findUnique.mockResolvedValue(null);
+
+    const err = await service.refresh('unknown-token').catch(e => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err.response).toMatchObject({ error: 'REFRESH_TOKEN_INVALID' });
+  });
+
+  it('AC#2 — token révoqué → 401 REFRESH_TOKEN_INVALID', async () => {
+    prismaRefresh.findUnique.mockResolvedValue({ ...TOKEN_RECORD, revokedAt: new Date() });
+
+    const err = await service.refresh('revoked-token').catch(e => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err.response).toMatchObject({ error: 'REFRESH_TOKEN_INVALID' });
+  });
+
+  it('AC#2 — token expiré → 401 REFRESH_TOKEN_INVALID', async () => {
+    prismaRefresh.findUnique.mockResolvedValue({ ...TOKEN_RECORD, expiresAt: new Date(Date.now() - 1000) });
+
+    const err = await service.refresh('expired-token').catch(e => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err.response).toMatchObject({ error: 'REFRESH_TOKEN_INVALID' });
+  });
+
+  it('succès — révoque l\'ancien token et retourne un nouveau access/refresh token (rotation, NFR-S1)', async () => {
+    const result = await service.refresh('valid-token');
+
+    expect(prismaRefresh.update).toHaveBeenCalledWith({
+      where: { id: TOKEN_RECORD.id },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(prismaRefresh.create).toHaveBeenCalled();
+    expect(result).toHaveProperty('accessToken');
+    expect(result).toHaveProperty('refreshToken');
+  });
+});
