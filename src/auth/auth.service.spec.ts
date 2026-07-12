@@ -27,6 +27,7 @@ describe('AuthService — login()', () => {
   let service: AuthService;
   let prismaUser: { findUnique: jest.Mock };
   let prismaRefresh: { create: jest.Mock };
+  let prismaAudit: { create: jest.Mock };
   let cache: { get: jest.Mock; set: jest.Mock; del: jest.Mock; incr: jest.Mock };
   let emailQueue: { sendEmail: jest.Mock };
 
@@ -35,6 +36,7 @@ describe('AuthService — login()', () => {
 
     prismaUser = { findUnique: jest.fn() };
     prismaRefresh = { create: jest.fn().mockResolvedValue({}) };
+    prismaAudit = { create: jest.fn().mockResolvedValue({}) };
     cache = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue(undefined),
@@ -46,7 +48,7 @@ describe('AuthService — login()', () => {
     const module = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: PrismaService, useValue: { user: prismaUser, refreshToken: prismaRefresh } },
+        { provide: PrismaService, useValue: { user: prismaUser, refreshToken: prismaRefresh, adminAuditLog: prismaAudit } },
         { provide: JwtService, useValue: { sign: jest.fn().mockReturnValue('tok') } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('1h') } },
         { provide: EmailQueueService, useValue: emailQueue },
@@ -133,6 +135,45 @@ describe('AuthService — login()', () => {
     expect(cache.del).toHaveBeenCalledWith(`login_locked:${BASE_USER.id}`);
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
+  });
+
+  it('AC#5 — admin login avec contexte → écrit un audit log USER_LOGIN', async () => {
+    const adminUser = { ...BASE_USER, role: 'ADMIN' as const };
+    const fullUser = { ...adminUser, lastName: 'User', phone: null, avatarUrl: null };
+    prismaUser.findUnique
+      .mockResolvedValueOnce(adminUser)
+      .mockResolvedValueOnce(fullUser);
+    mockBcryptCompare.mockResolvedValue(true);
+
+    await service.login(
+      { email: adminUser.email, password: 'correct' },
+      { ip: '1.2.3.4', userAgent: 'jest-agent' },
+    );
+
+    expect(prismaAudit.create).toHaveBeenCalledWith({
+      data: {
+        adminId: adminUser.id,
+        action: 'USER_LOGIN',
+        ip: '1.2.3.4',
+        userAgent: 'jest-agent',
+        result: 'SUCCESS',
+      },
+    });
+  });
+
+  it('AC#5 — login non-admin → aucun audit log écrit', async () => {
+    const fullUser = { ...BASE_USER, lastName: 'User', phone: null, avatarUrl: null };
+    prismaUser.findUnique
+      .mockResolvedValueOnce(BASE_USER)
+      .mockResolvedValueOnce(fullUser);
+    mockBcryptCompare.mockResolvedValue(true);
+
+    await service.login(
+      { email: BASE_USER.email, password: 'correct' },
+      { ip: '1.2.3.4', userAgent: 'jest-agent' },
+    );
+
+    expect(prismaAudit.create).not.toHaveBeenCalled();
   });
 });
 
@@ -308,5 +349,202 @@ describe('AuthService — resendOtp()', () => {
     expect(emailQueue.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({ to: BASE_USER.email, template: 'otp' }),
     );
+  });
+});
+
+// ─── googleAuth() ─────────────────────────────────────────────────────────────
+
+const GOOGLE_USER_INPUT = {
+  email: 'alice@gmail.com',
+  firstName: 'Alice',
+  lastName: 'Dupont',
+  googleId: 'gid-123456',
+};
+
+const FULL_USER_FIXTURE = {
+  id: 'uid-2',
+  email: 'alice@gmail.com',
+  firstName: 'Alice',
+  lastName: 'Dupont',
+  phone: null,
+  role: 'OWNER' as const,
+  avatarUrl: null,
+};
+
+describe('AuthService — googleAuth()', () => {
+  let service: AuthService;
+  let prismaUser: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+  let prismaRefresh: { create: jest.Mock };
+
+  beforeEach(async () => {
+    prismaUser = {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    prismaRefresh = { create: jest.fn().mockResolvedValue({}) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: { user: prismaUser, refreshToken: prismaRefresh } },
+        { provide: JwtService, useValue: { sign: jest.fn().mockReturnValue('tok') } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('1h') } },
+        { provide: EmailQueueService, useValue: { sendEmail: jest.fn().mockResolvedValue(undefined) } },
+        { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn(), incr: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  it('AC#1 — nouveau compte → create avec role=VISITOR + emailVerified=true + passwordHash=null, retourne newUser=true', async () => {
+    prismaUser.findUnique
+      .mockResolvedValueOnce(null)              // email lookup → pas de compte
+      .mockResolvedValueOnce(FULL_USER_FIXTURE); // generateAuthResponse user select
+    prismaUser.create.mockResolvedValue({ id: 'uid-2', email: 'alice@gmail.com', role: 'VISITOR' });
+
+    const result = await service.googleAuth(GOOGLE_USER_INPUT);
+
+    expect(prismaUser.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          role: 'VISITOR',
+          emailVerified: true,
+          passwordHash: null,
+          googleId: GOOGLE_USER_INPUT.googleId,
+        }),
+      }),
+    );
+    expect(result.newUser).toBe(true);
+    expect(result).toHaveProperty('accessToken');
+    expect(result).toHaveProperty('refreshToken');
+  });
+
+  it('AC#2 — compte existant sans googleId → update pour lier googleId, retourne newUser=false', async () => {
+    const existingUser = { id: 'uid-1', email: 'alice@gmail.com', isActive: true, googleId: null, role: 'OWNER' };
+    prismaUser.findUnique
+      .mockResolvedValueOnce(existingUser)      // email lookup → compte trouvé sans googleId
+      .mockResolvedValueOnce(FULL_USER_FIXTURE); // generateAuthResponse user select
+
+    const result = await service.googleAuth(GOOGLE_USER_INPUT);
+
+    expect(prismaUser.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: existingUser.id },
+        data: { googleId: GOOGLE_USER_INPUT.googleId },
+      }),
+    );
+    expect(result.newUser).toBe(false);
+    expect(result).toHaveProperty('accessToken');
+  });
+
+  it('AC#3 — compte existant avec googleId déjà lié → pas de update, retourne tokens normalement', async () => {
+    const existingUser = { id: 'uid-1', email: 'alice@gmail.com', isActive: true, googleId: 'gid-123456', role: 'OWNER' };
+    prismaUser.findUnique
+      .mockResolvedValueOnce(existingUser)
+      .mockResolvedValueOnce(FULL_USER_FIXTURE);
+
+    const result = await service.googleAuth(GOOGLE_USER_INPUT);
+
+    expect(prismaUser.update).not.toHaveBeenCalled();
+    expect(result.newUser).toBe(false);
+    expect(result).toHaveProperty('accessToken');
+  });
+
+  it('AC#5 — compte isActive=false → ForbiddenException ACCOUNT_DISABLED', async () => {
+    prismaUser.findUnique.mockResolvedValueOnce({
+      id: 'uid-1', email: 'alice@gmail.com', isActive: false, googleId: null, role: 'OWNER',
+    });
+
+    const err = await service.googleAuth(GOOGLE_USER_INPUT).catch(e => e);
+
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.response).toMatchObject({ error: 'ACCOUNT_DISABLED' });
+    expect(prismaUser.update).not.toHaveBeenCalled();
+  });
+});
+
+// ─── changePassword() ─────────────────────────────────────────────────────────
+
+describe('AuthService — changePassword()', () => {
+  let service: AuthService;
+  let prismaUser: { findUnique: jest.Mock; update: jest.Mock };
+  let prismaRefresh: { updateMany: jest.Mock };
+
+  const USER_WITH_HASH = {
+    id: 'uid-1',
+    email: 'user@test.com',
+    passwordHash: '$2b$12$hashed',
+    isActive: true,
+    role: 'OWNER' as const,
+  };
+
+  beforeEach(async () => {
+    mockBcryptCompare.mockReset();
+    prismaUser = {
+      findUnique: jest.fn().mockResolvedValue(USER_WITH_HASH),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    prismaRefresh = { updateMany: jest.fn().mockResolvedValue({ count: 2 }) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: { user: prismaUser, refreshToken: prismaRefresh } },
+        { provide: JwtService, useValue: { sign: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: EmailQueueService, useValue: { sendEmail: jest.fn() } },
+        { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn(), incr: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get(AuthService);
+  });
+
+  it('succès — met à jour le hash et révoque tous les refresh tokens actifs', async () => {
+    mockBcryptCompare.mockResolvedValue(true);
+    const dto = { currentPassword: 'OldPass1', newPassword: 'NewPass1', newPasswordConfirm: 'NewPass1' };
+
+    const result = await service.changePassword(USER_WITH_HASH.id, dto);
+
+    expect(prismaUser.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: USER_WITH_HASH.id }, data: { passwordHash: 'hashed' } }),
+    );
+    expect(prismaRefresh.updateMany).toHaveBeenCalledWith({
+      where: { userId: USER_WITH_HASH.id, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(result).toHaveProperty('message');
+  });
+
+  it('mot de passe actuel incorrect → UnauthorizedException', async () => {
+    mockBcryptCompare.mockResolvedValue(false);
+    const dto = { currentPassword: 'wrong', newPassword: 'NewPass1', newPasswordConfirm: 'NewPass1' };
+
+    const err = await service.changePassword(USER_WITH_HASH.id, dto).catch(e => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(prismaRefresh.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('compte Google-only (passwordHash=null) → BadRequestException NO_PASSWORD', async () => {
+    prismaUser.findUnique.mockResolvedValue({ ...USER_WITH_HASH, passwordHash: null });
+    const dto = { currentPassword: 'any', newPassword: 'NewPass1', newPasswordConfirm: 'NewPass1' };
+
+    const err = await service.changePassword(USER_WITH_HASH.id, dto).catch(e => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.response).toMatchObject({ error: 'NO_PASSWORD' });
+    expect(prismaRefresh.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('confirmation ne correspond pas → BadRequestException', async () => {
+    const dto = { currentPassword: 'OldPass1', newPassword: 'NewPass1', newPasswordConfirm: 'Different' };
+
+    const err = await service.changePassword(USER_WITH_HASH.id, dto).catch(e => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(prismaUser.findUnique).not.toHaveBeenCalled();
   });
 });

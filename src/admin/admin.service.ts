@@ -1,12 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ContractStatus, PaymentStatus, Role } from '@prisma/client';
+import { AuditAction, Prisma, ContractStatus, PaymentStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailQueueService } from '../notifications/email-queue.service';
+
 interface ListUsersQuery {
   page?: number;
   limit?: number;
   role?: Role;
   isActive?: boolean;
   search?: string;
+}
+
+interface AdminContext {
+  adminId: string;
+  ip: string;
+  userAgent: string;
 }
 
 const USER_SELECT = {
@@ -25,7 +33,10 @@ const USER_SELECT = {
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailQueue: EmailQueueService,
+  ) {}
 
   async getGlobalStats() {
     const [users, properties, contracts, paymentVolume] = await Promise.all([
@@ -77,7 +88,7 @@ export class AdminService {
 
   async listUsers(query: ListUsersQuery) {
     const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 10));
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const skip = (page - 1) * limit;
 
     const where: Prisma.UserWhereInput = {};
@@ -86,8 +97,8 @@ export class AdminService {
     if (query.search) {
       where.OR = [
         { firstName: { contains: query.search, mode: 'insensitive' } },
-        { lastName: { contains: query.search, mode: 'insensitive' } },
-        { email: { contains: query.search, mode: 'insensitive' } },
+        { lastName:  { contains: query.search, mode: 'insensitive' } },
+        { email:     { contains: query.search, mode: 'insensitive' } },
       ];
     }
 
@@ -105,13 +116,110 @@ export class AdminService {
     return { data, total, page, limit };
   }
 
-  async deactivateUser(id: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
-    if (!existing) throw new NotFoundException('USER_NOT_FOUND');
-    return this.prisma.user.update({
+  async deactivateUser(id: string, context: AdminContext) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, firstName: true },
+    });
+    if (!user) throw new NotFoundException('USER_NOT_FOUND');
+
+    const updated = await this.prisma.user.update({
       where: { id },
       data: { isActive: false },
       select: USER_SELECT,
     });
+
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: id, revokedAt: null },
+      data:  { revokedAt: new Date() },
+    });
+
+    await this.emailQueue.sendEmail({
+      to:       user.email,
+      subject:  'Votre compte Immo Plus CM a été désactivé',
+      template: 'account-disabled',
+      data:     { name: user.firstName },
+    });
+
+    await this.logAction({
+      adminId:      context.adminId,
+      action:       AuditAction.ACCOUNT_DISABLE,
+      targetUserId: id,
+      ip:           context.ip,
+      userAgent:    context.userAgent,
+      result:       'SUCCESS',
+    });
+
+    return updated;
+  }
+
+  async reactivateUser(id: string, context: AdminContext) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, firstName: true },
+    });
+    if (!user) throw new NotFoundException('USER_NOT_FOUND');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { isActive: true },
+      select: USER_SELECT,
+    });
+
+    await this.emailQueue.sendEmail({
+      to:       user.email,
+      subject:  'Votre compte Immo Plus CM a été réactivé',
+      template: 'account-reactivated',
+      data:     { name: user.firstName },
+    });
+
+    await this.logAction({
+      adminId:      context.adminId,
+      action:       AuditAction.ACCOUNT_ENABLE,
+      targetUserId: id,
+      ip:           context.ip,
+      userAgent:    context.userAgent,
+      result:       'SUCCESS',
+    });
+
+    return updated;
+  }
+
+  async changeUserRole(id: string, role: Role, context: AdminContext) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!user) throw new NotFoundException('USER_NOT_FOUND');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { role },
+      select: USER_SELECT,
+    });
+
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: id, revokedAt: null },
+      data:  { revokedAt: new Date() },
+    });
+
+    await this.logAction({
+      adminId:      context.adminId,
+      action:       AuditAction.ROLE_CHANGE,
+      targetUserId: id,
+      ip:           context.ip,
+      userAgent:    context.userAgent,
+      result:       role,
+    });
+
+    return updated;
+  }
+
+  private async logAction(params: {
+    adminId: string;
+    action: AuditAction;
+    targetUserId?: string;
+    ip: string;
+    userAgent: string;
+    result: string;
+  }): Promise<void> {
+    await this.prisma.adminAuditLog.create({ data: params });
   }
 }

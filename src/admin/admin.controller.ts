@@ -8,10 +8,15 @@ import {
   Patch,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
+import type { Request } from 'express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
+import { ChangeRoleDto } from './dto/change-role.dto';
 import { AdminService } from './admin.service';
 
 @ApiTags('Admin')
@@ -49,8 +54,8 @@ export class AdminController {
     @Query('search') search?: string,
   ) {
     return this.service.listUsers({
-      page: page !== undefined ? parseInt(page, 10) : undefined,
-      limit: limit !== undefined ? parseInt(limit, 10) : undefined,
+      page:     page     !== undefined ? parseInt(page, 10)  : undefined,
+      limit:    limit    !== undefined ? parseInt(limit, 10) : undefined,
       role,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
       search,
@@ -60,7 +65,40 @@ export class AdminController {
   @Patch('users/:id/deactivate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Désactiver un utilisateur' })
-  deactivateUser(@Param('id') id: string) {
-    return this.service.deactivateUser(id);
+  deactivateUser(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @CurrentUser() admin: AuthUser,
+  ) {
+    return this.service.deactivateUser(id, this.extractContext(req, admin.id));
+  }
+
+  @Patch('users/:id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Réactiver un utilisateur' })
+  reactivateUser(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @CurrentUser() admin: AuthUser,
+  ) {
+    return this.service.reactivateUser(id, this.extractContext(req, admin.id));
+  }
+
+  @Patch('users/:id/role')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Changer le rôle d\'un utilisateur' })
+  changeRole(
+    @Param('id') id: string,
+    @Body() dto: ChangeRoleDto,
+    @Req() req: Request,
+    @CurrentUser() admin: AuthUser,
+  ) {
+    return this.service.changeUserRole(id, dto.role, this.extractContext(req, admin.id));
+  }
+
+  private extractContext(req: Request, adminId: string) {
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip ?? 'unknown';
+    const userAgent = (req.headers['user-agent'] as string) ?? 'unknown';
+    return { adminId, ip, userAgent };
   }
 }

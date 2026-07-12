@@ -113,6 +113,13 @@ enum CommissionStatus {
   CANCELLED
 }
 
+enum AuditAction {
+  USER_LOGIN
+  ROLE_CHANGE
+  ACCOUNT_DISABLE
+  ACCOUNT_ENABLE
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -121,7 +128,8 @@ model User {
   firstName     String   @db.VarChar(100)
   email         String   @unique @db.VarChar(255)
   phone         String?  @unique @db.VarChar(20)
-  passwordHash  String   @db.VarChar(255)
+  passwordHash  String?  @db.VarChar(255)
+  googleId      String?  @unique @map("google_id")
   role          Role     @default(OWNER)
   avatarUrl     String?
   emailVerified Boolean  @default(false)
@@ -142,6 +150,8 @@ model User {
   paymentAlertConfig  PaymentAlertConfig?
   agencyMembership    AgencyMember?
   managedMandates     Mandate[]              @relation("MandateManager")
+  adminAuditLogs      AdminAuditLog[]        @relation("AdminAuditAdmin")
+  targetAuditLogs     AdminAuditLog[]        @relation("AdminAuditTarget")
 
   @@map("users")
 }
@@ -539,4 +549,24 @@ model Commission {
   @@index([agencyId, status])
   @@index([contractId])
   @@map("commissions")
+}
+
+model AdminAuditLog {
+  id           String      @id @default(uuid())
+  adminId      String
+  action       AuditAction
+  targetUserId String?
+  ip           String      @db.VarChar(45)
+  userAgent    String      @db.VarChar(500)
+  result       String      @db.VarChar(50)
+  createdAt    DateTime    @default(now())
+
+  admin  User  @relation("AdminAuditAdmin",  fields: [adminId],      references: [id])
+  target User? @relation("AdminAuditTarget", fields: [targetUserId], references: [id])
+
+  @@index([adminId])
+  @@index([targetUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }

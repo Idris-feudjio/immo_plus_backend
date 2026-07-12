@@ -51,10 +51,23 @@ export class UsersController {
   @Post('profile/avatar')
   @ApiOperation({ summary: "Upload de l'avatar" })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadAvatar(@CurrentUser() user: AuthUser, @UploadedFile() file: { buffer: Buffer; mimetype: string }) {
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  async uploadAvatar(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('MISSING_FILE');
-    const url = await this.storage.uploadBuffer(`avatars/${user.id}`, file.buffer, file.mimetype);
+
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!ALLOWED_TYPES.includes(file.mimetype)) throw new BadRequestException('INVALID_FILE_TYPE');
+    if (file.buffer.length > 2 * 1024 * 1024) throw new BadRequestException('FILE_TOO_LARGE');
+
+    const currentUser = await this.service.findByIdOrThrow(user.id);
+    if (currentUser.avatarUrl) {
+      const oldKey = this.storage.keyFromUrl(currentUser.avatarUrl);
+      await this.storage.delete(oldKey);
+    }
+
+    const extMap: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+    const key = `users/${user.id}/avatar.${extMap[file.mimetype]}`;
+    const url = await this.storage.uploadBuffer(key, file.buffer, file.mimetype);
     return this.service.updateAvatar(user.id, url);
   }
 

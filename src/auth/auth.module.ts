@@ -5,6 +5,8 @@ import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy.js';
+import { GoogleAuthGuard } from './guards/google-auth.guard.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
 @Module({
@@ -20,7 +22,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     NotificationsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, GoogleAuthGuard],
   exports: [JwtModule],
 })
 export class AuthModule {}

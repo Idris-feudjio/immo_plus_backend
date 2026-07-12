@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { randomInt } from 'crypto';
+import { AuditAction, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from '../notifications/email-queue.service.js';
 import { CacheService } from '../cache/cache.service';
@@ -181,7 +182,7 @@ export class AuthService {
     return { message: 'OTP renvoyé avec succès.' };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, context?: { ip: string; userAgent: string }) {
     const email = dto.email.toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -200,6 +201,9 @@ export class AuthService {
       );
     }
 
+    if (!user.passwordHash) {
+      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Email ou mot de passe incorrect.' });
+    }
     const passwordOk = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordOk) {
       const attemptsKey = `login_attempts:${user.id}`;
@@ -230,6 +234,18 @@ export class AuthService {
 
     await this.cache.del(`login_attempts:${user.id}`);
     await this.cache.del(`login_locked:${user.id}`);
+
+    if (user.role === Role.ADMIN && context) {
+      this.prisma.adminAuditLog.create({
+        data: {
+          adminId: user.id,
+          action: AuditAction.USER_LOGIN,
+          ip: context.ip,
+          userAgent: context.userAgent,
+          result: 'SUCCESS',
+        },
+      }).catch(() => {});
+    }
 
     return this.generateAuthResponse(user.id, user.email, user.role);
   }
@@ -322,13 +338,89 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable.');
 
+    if (!user.passwordHash) {
+      throw new BadRequestException({ error: 'NO_PASSWORD', message: 'Ce compte utilise la connexion Google. Définissez un mot de passe depuis votre profil.' });
+    }
     const isValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect.');
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
 
     return { message: 'Mot de passe modifié avec succès.' };
+  }
+
+  async googleAuth(googleUser: { email: string; firstName: string; lastName: string; googleId: string }) {
+    const email = googleUser.email.toLowerCase();
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+
+    if (existingUser) {
+      if (!existingUser.isActive) {
+        throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+      }
+      if (!existingUser.googleId) {
+        await this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: { googleId: googleUser.googleId },
+        });
+      }
+      const authResp = await this.generateAuthResponse(existingUser.id, existingUser.email, existingUser.role);
+      return { ...authResp, newUser: false };
+    }
+
+    // P07: handle concurrent creation race (P2002 unique constraint on email)
+    try {
+      const newUser = await this.prisma.user.create({
+        data: {
+          firstName: googleUser.firstName || 'Utilisateur',
+          lastName: googleUser.lastName || 'Google',
+          email,
+          passwordHash: null,
+          googleId: googleUser.googleId,
+          emailVerified: true,
+          isActive: true,
+          role: 'VISITOR',
+        },
+        select: { id: true, email: true, role: true },
+      });
+      const authResp = await this.generateAuthResponse(newUser.id, newUser.email, newUser.role);
+      return { ...authResp, newUser: true };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const raceUser = await this.prisma.user.findUnique({ where: { email } });
+        if (raceUser) {
+          if (!raceUser.isActive) {
+            throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+          }
+          if (!raceUser.googleId) {
+            await this.prisma.user.update({ where: { id: raceUser.id }, data: { googleId: googleUser.googleId } });
+          }
+          const authResp = await this.generateAuthResponse(raceUser.id, raceUser.email, raceUser.role);
+          return { ...authResp, newUser: false };
+        }
+      }
+      throw err;
+    }
+  }
+
+  // P02: atomic update prevents TOCTOU race; P04: returns fresh tokens with correct role;
+  // P05: restricted to Google-linked accounts only
+  async setGoogleRole(userId: string, role: 'OWNER' | 'TENANT') {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable.');
+    if (!user.googleId) {
+      throw new ForbiddenException({ error: 'GOOGLE_ONLY', message: 'Ce endpoint est réservé aux comptes connectés via Google.' });
+    }
+    await this.prisma.user.updateMany({
+      where: { id: userId, role: 'VISITOR' },
+      data: { role },
+    });
+    const effectiveRole = user.role === 'VISITOR' ? role : (user.role as 'OWNER' | 'TENANT');
+    return this.generateAuthResponse(userId, user.email, effectiveRole);
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────

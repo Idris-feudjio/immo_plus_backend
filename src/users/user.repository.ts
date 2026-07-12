@@ -25,7 +25,7 @@ export type UserView = Omit<User, 'passwordHash'>;
 const USER_SELECT = {
   id: true, lastName: true, firstName: true, email: true, phone: true,
   role: true, avatarUrl: true, emailVerified: true, isActive: true,
-  createdAt: true, updatedAt: true,
+  googleId: true, createdAt: true, updatedAt: true,
 } as const satisfies Prisma.UserSelect;
 
 const USER_QUERY_FIELDS: QueryField[] = [
