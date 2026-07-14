@@ -20,6 +20,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Cacheable } from '../common/decorators/cacheable.decorator';
 import { CacheEvict } from '../common/decorators/cache-evict.decorator';
+import { CheckPlanLimit } from '../common/decorators/check-plan-limit.decorator';
 import { CacheInterceptor } from '../common/interceptors/cache.interceptor';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import {
@@ -60,6 +61,7 @@ export class PropertiesController {
 
   @Post()
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
+  @CheckPlanLimit('properties')
   @CacheEvict({ key: 'properties' })
   @ApiOperation({ summary: 'Créer un bien' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePropertyDto) {

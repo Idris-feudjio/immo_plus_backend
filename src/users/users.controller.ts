@@ -15,7 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -51,6 +51,14 @@ export class UsersController {
   @Post('profile/avatar')
   @ApiOperation({ summary: "Upload de l'avatar" })
   @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
   async uploadAvatar(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('MISSING_FILE');
@@ -59,15 +67,21 @@ export class UsersController {
     if (!ALLOWED_TYPES.includes(file.mimetype)) throw new BadRequestException('INVALID_FILE_TYPE');
     if (file.buffer.length > 2 * 1024 * 1024) throw new BadRequestException('FILE_TOO_LARGE');
 
-    const currentUser = await this.service.findByIdOrThrow(user.id);
-    if (currentUser.avatarUrl) {
-      const oldKey = this.storage.keyFromUrl(currentUser.avatarUrl);
-      await this.storage.delete(oldKey);
-    }
-
     const extMap: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
     const key = `users/${user.id}/avatar.${extMap[file.mimetype]}`;
-    const url = await this.storage.uploadBuffer(key, file.buffer, file.mimetype);
+    const [url, currentUser] = await Promise.all([
+      this.storage.uploadBuffer(key, file.buffer, file.mimetype),
+      this.service.findByIdOrThrow(user.id),
+    ]);
+
+    if (currentUser.avatarUrl) {
+      const oldKey = this.storage.keyFromUrl(currentUser.avatarUrl);
+      // Same key means the new upload already overwrote the old object — deleting it here would delete the file just uploaded
+      if (oldKey !== key) {
+        await this.storage.delete(oldKey);
+      }
+    }
+
     return this.service.updateAvatar(user.id, url);
   }
 

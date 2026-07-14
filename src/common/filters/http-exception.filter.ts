@@ -4,6 +4,7 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
@@ -19,7 +20,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let message = 'Une erreur interne est survenue.';
     let details: unknown[] | undefined;
 
-    if (exception instanceof HttpException) {
+    // @nestjs/platform-express's FileInterceptor already converts multer's raw
+    // LIMIT_FILE_SIZE error into a PayloadTooLargeException before it reaches this
+    // filter — remap it to match the FILE_TOO_LARGE shape our manual size checks use.
+    if (exception instanceof PayloadTooLargeException) {
+      statusCode = HttpStatus.BAD_REQUEST;
+      error = 'FILE_TOO_LARGE';
+      message = 'FILE_TOO_LARGE';
+    } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 

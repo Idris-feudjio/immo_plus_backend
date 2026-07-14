@@ -88,15 +88,44 @@ describe('UsersController — uploadAvatar()', () => {
     );
   });
 
-  it('ancien avatar existant → delete appelé avec la bonne clé avant upload', async () => {
+  it('ancien avatar avec extension différente → delete appelé avec la bonne clé après upload réussi', async () => {
+    const oldUrl = 'https://r2/users/uid-1/avatar.png';
+    usersService.findByIdOrThrow.mockResolvedValue({ ...MOCK_USER, avatarUrl: oldUrl });
+    storageService.keyFromUrl.mockReturnValue('users/uid-1/avatar.png');
+
+    await controller.uploadAvatar(MOCK_USER as any, makeFile('image/jpeg', 500));
+
+    expect(storageService.keyFromUrl).toHaveBeenCalledWith(oldUrl);
+    expect(storageService.delete).toHaveBeenCalledWith('users/uid-1/avatar.png');
+    // Upload must complete before the old avatar is deleted — no data loss if upload fails
+    expect(storageService.uploadBuffer.mock.invocationCallOrder[0])
+      .toBeLessThan(storageService.delete.mock.invocationCallOrder[0]);
+  });
+
+  it('ancien et nouvel avatar ont la même clé (même extension) → delete NON appelé (évite l\'auto-suppression du fichier qui vient d\'être uploadé)', async () => {
     const oldUrl = 'https://r2/users/uid-1/avatar.jpg';
     usersService.findByIdOrThrow.mockResolvedValue({ ...MOCK_USER, avatarUrl: oldUrl });
     storageService.keyFromUrl.mockReturnValue('users/uid-1/avatar.jpg');
 
     await controller.uploadAvatar(MOCK_USER as any, makeFile('image/jpeg', 500));
 
-    expect(storageService.keyFromUrl).toHaveBeenCalledWith(oldUrl);
-    expect(storageService.delete).toHaveBeenCalledWith('users/uid-1/avatar.jpg');
+    expect(storageService.uploadBuffer).toHaveBeenCalledWith(
+      'users/uid-1/avatar.jpg',
+      expect.any(Buffer),
+      'image/jpeg',
+    );
+    expect(storageService.delete).not.toHaveBeenCalled();
+  });
+
+  it('upload échoue → ancien avatar NON supprimé (pas de perte de données)', async () => {
+    const oldUrl = 'https://r2/users/uid-1/avatar.jpg';
+    usersService.findByIdOrThrow.mockResolvedValue({ ...MOCK_USER, avatarUrl: oldUrl });
+    storageService.uploadBuffer.mockRejectedValue(new Error('R2 unavailable'));
+
+    const err = await controller.uploadAvatar(MOCK_USER as any, makeFile('image/jpeg', 500)).catch(e => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(storageService.delete).not.toHaveBeenCalled();
   });
 
   it('pas d\'ancien avatar → delete non appelé', async () => {
