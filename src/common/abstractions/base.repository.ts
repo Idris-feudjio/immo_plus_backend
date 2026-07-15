@@ -101,11 +101,13 @@ export abstract class BaseRepository<T, D extends object = Record<string, unknow
   protected buildSearchWhere(
     request: ISearchRequest,
     baseWhere: Record<string, unknown> = {},
+    /** Overrides `this.queryFields` for this call only — e.g. to exclude a field from full-text search on a public route without affecting authenticated callers. */
+    searchableFieldsOverride?: QueryField[],
   ): Record<string, unknown> {
     const where: Record<string, unknown> = { ...baseWhere };
 
     if (request.searchKey?.trim()) {
-      const searchable = this.queryFields.filter((f) => f.searchable);
+      const searchable = (searchableFieldsOverride ?? this.queryFields).filter((f) => f.searchable);
       if (searchable.length > 0) {
         where.OR = searchable.map((f) => ({
           [f.prismaField]: { contains: request.searchKey!.trim(), mode: 'insensitive' },

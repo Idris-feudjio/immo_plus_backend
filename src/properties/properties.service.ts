@@ -12,6 +12,7 @@ import {
   Role,
 } from '@prisma/client';
 import { BaseService } from '../common/abstractions/base.service';
+import { StorageService } from '../storage/storage.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { ISearchRequest, SortClause } from '../common/interfaces/search-request.interface';
 import { v4 as uuidv4 } from 'uuid';
@@ -39,15 +40,20 @@ function buildPriceLabel(price: number): string {
 
 @Injectable()
 export class PropertiesService extends BaseService<Property, PropertyCreateData> {
-  constructor(protected override readonly repository: PropertyRepository) {
+  constructor(
+    protected override readonly repository: PropertyRepository,
+    private readonly storage: StorageService,
+  ) {
     super(repository);
   }
 
-  listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {
-    return this.repository.findListPaginated(
+  async listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {
+    const result = await this.repository.findListPaginated(
       this.toSearchRequest(query),
       { isPublished: true },
+      true,
     );
+    return { ...result, data: result.data.map((item) => this.maskAddress(item)) };
   }
 
   listDashboard(
@@ -66,13 +72,18 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
   async getBySlug(slug: string): Promise<PropertyWithDetails> {
     const property = await this.repository.findBySlugPublic(slug);
     if (!property) throw new NotFoundException('Bien introuvable.');
-    return property;
+    return this.maskAddress(property);
   }
 
   async getById(id: string): Promise<PropertyWithDetails> {
     const property = await this.repository.findByIdWithDetails(id);
     if (!property) throw new NotFoundException('Bien introuvable.');
     return property;
+  }
+
+  async getByIdForOwner(id: string, userId: string, role: string): Promise<PropertyWithDetails> {
+    await this.checkOwnership(id, userId, role);
+    return this.getById(id);
   }
 
   async createProperty(ownerId: string, dto: CreatePropertyDto): Promise<Property> {
@@ -141,25 +152,39 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     await this.repository.softDelete(id);
   }
 
+  /**
+   * Ownership + 20-image quota check, callable by the controller BEFORE it uploads
+   * anything to R2 — so an unauthorized caller or an over-quota request never triggers
+   * real storage writes. addImages() re-runs this right before inserting DB rows.
+   */
+  private async assertImageQuota(id: string, userId: string, role: string, incomingCount: number): Promise<number> {
+    await this.checkOwnership(id, userId, role);
+    const currentCount = await this.repository.countImages(id);
+    if (currentCount + incomingCount > 20) {
+      throw new ConflictException({
+        error: 'MAX_IMAGES_REACHED',
+        message: 'Maximum 20 images par bien.',
+      });
+    }
+    return currentCount;
+  }
+
+  async assertCanAddImages(id: string, userId: string, role: string, incomingCount: number): Promise<void> {
+    await this.assertImageQuota(id, userId, role, incomingCount);
+  }
+
   async addImages(
     id: string,
     userId: string,
     role: string,
     images: PropertyImageInput[],
   ): Promise<{ images: PropertyImage[] }> {
-    await this.checkOwnership(id, userId, role);
-
-    const currentCount = await this.repository.countImages(id);
-    if (currentCount + images.length > 4) {
-      throw new ConflictException({
-        error: 'MAX_IMAGES_REACHED',
-        message: 'Maximum 4 images par bien.',
-      });
-    }
+    const currentCount = await this.assertImageQuota(id, userId, role, images.length);
 
     const hasCover = await this.repository.findFirstCoverImage(id);
 
     const items = images.map((img, idx) => ({
+      id: img.id,
       propertyId: id,
       url: img.url,
       thumbUrl: img.thumbUrl,
@@ -194,6 +219,11 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
 
     await this.repository.deleteImageById(imageId);
 
+    await this.storage.delete(this.storage.keyFromUrl(img.url));
+    if (img.thumbUrl) {
+      await this.storage.delete(this.storage.keyFromUrl(img.thumbUrl));
+    }
+
     if (img.isCover) {
       const next = await this.repository.findFirstImage(propertyId);
       if (next) await this.repository.setImageCover(next.id, true);
@@ -214,6 +244,16 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Strip the exact street address before returning a property through a
+   * @Public() route (AC#2, Story 3.3). city/neighborhood/latitude/longitude
+   * are left intact — the GPS pair is precise, not approximate, but showing
+   * the map marker without the numéro+rue text is what the AC asks for.
+   */
+  private maskAddress<T extends { address: string }>(item: T): T {
+    return { ...item, address: '' };
+  }
 
   /**
    * Convert FilterPropertiesDto (HTTP query params, 1-based page) into the

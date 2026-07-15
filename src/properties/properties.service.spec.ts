@@ -6,6 +6,7 @@ import {
 import { Property, PropertyStatus, Role } from '@prisma/client';
 import { PropertiesService } from './properties.service';
 import { PropertyRepository } from './property.repository';
+import { StorageService } from '../storage/storage.service';
 
 // ─── Mock factory ─────────────────────────────────────────────────────────────
 
@@ -75,10 +76,18 @@ function baseProperty(overrides: Partial<Property> = {}): Property {
 describe('PropertiesService', () => {
   let service: PropertiesService;
   let repo: jest.Mocked<PropertyRepository>;
+  let storage: { delete: jest.Mock; keyFromUrl: jest.Mock; uploadBuffer: jest.Mock; generateId: jest.Mock; generateKey: jest.Mock };
 
   beforeEach(() => {
     repo = mockRepo();
-    service = new PropertiesService(repo);
+    storage = {
+      delete: jest.fn().mockResolvedValue(undefined),
+      keyFromUrl: jest.fn((url: string) => url.replace('https://r2/', '')),
+      uploadBuffer: jest.fn(),
+      generateId: jest.fn(),
+      generateKey: jest.fn(),
+    };
+    service = new PropertiesService(repo, storage as unknown as StorageService);
   });
 
   // ── create ─────────────────────────────────────────────────────────────────
@@ -191,16 +200,27 @@ describe('PropertiesService', () => {
   // ── addImages ──────────────────────────────────────────────────────────────
 
   describe('addImages', () => {
-    it('throws ConflictException when adding images would exceed 4', async () => {
+    it('throws ConflictException when adding images would exceed 20', async () => {
       repo.findByIdActive.mockResolvedValue(baseProperty());
-      repo.countImages.mockResolvedValue(3);
+      repo.countImages.mockResolvedValue(19);
 
       await expect(
         service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [
-          { url: 'a.jpg', thumbUrl: 'a-t.jpg' },
-          { url: 'b.jpg', thumbUrl: 'b-t.jpg' },
+          { id: 'img-a', url: 'a.jpg', thumbUrl: 'a-t.jpg' },
+          { id: 'img-b', url: 'b.jpg', thumbUrl: 'b-t.jpg' },
         ]),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('allows adding images up to exactly 20', async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty());
+      repo.countImages.mockResolvedValue(19);
+      repo.findFirstCoverImage.mockResolvedValue({ id: 'existing-cover' } as never);
+      repo.createImages.mockResolvedValue([]);
+
+      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [{ id: 'img-a', url: 'a.jpg', thumbUrl: 'a-t.jpg' }]);
+
+      expect(repo.createImages).toHaveBeenCalled();
     });
 
     it('sets first uploaded image as cover when no cover exists', async () => {
@@ -211,11 +231,147 @@ describe('PropertiesService', () => {
         { id: 'img-1', propertyId: PROP_ID, url: 'a.jpg', thumbUrl: null, isCover: true, order: 0, createdAt: new Date() },
       ]);
 
-      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [{ url: 'a.jpg', thumbUrl: 'a-t.jpg' }]);
+      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [{ id: 'img-1', url: 'a.jpg', thumbUrl: 'a-t.jpg' }]);
 
       expect(repo.createImages).toHaveBeenCalledWith([
-        expect.objectContaining({ isCover: true, order: 0 }),
+        expect.objectContaining({ id: 'img-1', isCover: true, order: 0 }),
       ]);
+    });
+  });
+
+  // ── removeImage ────────────────────────────────────────────────────────────
+
+  describe('removeImage', () => {
+    it('deletes the DB row and both R2 objects (image + thumbnail)', async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty());
+      repo.findImageById.mockResolvedValue({
+        id: 'img-1', propertyId: PROP_ID, url: 'https://r2/properties/prop-1/images/img-1.jpg',
+        thumbUrl: 'https://r2/properties/prop-1/images/img-1-thumb.jpg', isCover: false, order: 0, createdAt: new Date(),
+      });
+
+      await service.removeImage(PROP_ID, 'img-1', OWNER_ID, Role.OWNER);
+
+      expect(repo.deleteImageById).toHaveBeenCalledWith('img-1');
+      expect(storage.delete).toHaveBeenCalledWith('properties/prop-1/images/img-1.jpg');
+      expect(storage.delete).toHaveBeenCalledWith('properties/prop-1/images/img-1-thumb.jpg');
+    });
+
+    it('throws NotFoundException when image does not exist', async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty());
+      repo.findImageById.mockResolvedValue(null);
+
+      await expect(
+        service.removeImage(PROP_ID, 'missing-img', OWNER_ID, Role.OWNER),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+
+    it('promotes the next image to cover when the deleted image was the cover', async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty());
+      repo.findImageById.mockResolvedValue({
+        id: 'img-1', propertyId: PROP_ID, url: 'https://r2/a.jpg', thumbUrl: null, isCover: true, order: 0, createdAt: new Date(),
+      });
+      repo.findFirstImage.mockResolvedValue({
+        id: 'img-2', propertyId: PROP_ID, url: 'https://r2/b.jpg', thumbUrl: null, isCover: false, order: 1, createdAt: new Date(),
+      });
+
+      await service.removeImage(PROP_ID, 'img-1', OWNER_ID, Role.OWNER);
+
+      expect(repo.setImageCover).toHaveBeenCalledWith('img-2', true);
+    });
+  });
+
+  // ── public address masking ─────────────────────────────────────────────────
+
+  describe('public visibility (address masking)', () => {
+    it('listPublic() masks address but keeps other fields', async () => {
+      repo.findListPaginated.mockResolvedValue({
+        data: [
+          { id: PROP_ID, slug: 'villa-test-abc12345', title: 'Villa Test', type: 'VILLA', city: 'Yaoundé', neighborhood: 'Bastos', address: '123 rue test', price: 250000, priceLabel: '250 000 FCFA/mois', area: 120, bedrooms: 3, bathrooms: 2, status: PropertyStatus.AVAILABLE, isPublished: true, createdAt: new Date(), images: [] } as never,
+        ],
+        meta: { total: 1, pageNumber: 0, pageSize: 20, totalPages: 1 },
+      });
+
+      const result = await service.listPublic({});
+
+      expect(result.data[0].address).toBe('');
+      expect(result.data[0].city).toBe('Yaoundé');
+      expect(result.data[0].neighborhood).toBe('Bastos');
+      expect(repo.findListPaginated).toHaveBeenCalledWith(expect.anything(), { isPublished: true }, true);
+    });
+
+    it('getBySlug() masks address but keeps latitude/longitude/city/neighborhood', async () => {
+      repo.findBySlugPublic.mockResolvedValue({
+        ...baseProperty({ address: '123 rue test', latitude: 3.848 as never, longitude: 11.502 as never, isPublished: true }),
+        images: [],
+        documents: [],
+      });
+
+      const result = await service.getBySlug('villa-test-abc12345');
+
+      expect(result.address).toBe('');
+      expect(result.latitude).toBe(3.848);
+      expect(result.longitude).toBe(11.502);
+      expect(result.city).toBe('Yaoundé');
+      expect(result.neighborhood).toBe('Bastos');
+    });
+
+    it('listDashboard() does NOT mask address (authenticated route)', async () => {
+      repo.findListPaginated.mockResolvedValue({
+        data: [
+          { id: PROP_ID, slug: 'villa-test-abc12345', title: 'Villa Test', type: 'VILLA', city: 'Yaoundé', neighborhood: 'Bastos', address: '123 rue test', price: 250000, priceLabel: '250 000 FCFA/mois', area: 120, bedrooms: 3, bathrooms: 2, status: PropertyStatus.AVAILABLE, isPublished: true, createdAt: new Date(), images: [] } as never,
+        ],
+        meta: { total: 1, pageNumber: 0, pageSize: 20, totalPages: 1 },
+      });
+
+      const result = await service.listDashboard(OWNER_ID, Role.OWNER, {});
+
+      expect(result.data[0].address).toBe('123 rue test');
+    });
+
+    it('getById() does NOT mask address (authenticated route)', async () => {
+      repo.findByIdWithDetails.mockResolvedValue({
+        ...baseProperty({ address: '123 rue test' }),
+        images: [],
+        documents: [],
+      });
+
+      const result = await service.getById(PROP_ID);
+
+      expect(result.address).toBe('123 rue test');
+    });
+  });
+
+  // ── getByIdForOwner ────────────────────────────────────────────────────────
+
+  describe('getByIdForOwner', () => {
+    it('throws NotFoundException when property does not exist', async () => {
+      repo.findByIdActive.mockResolvedValue(null);
+
+      await expect(
+        service.getByIdForOwner(PROP_ID, OWNER_ID, Role.OWNER),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("throws ForbiddenException when OWNER requests another owner's property", async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty({ ownerId: 'other-owner' }));
+
+      await expect(
+        service.getByIdForOwner(PROP_ID, OWNER_ID, Role.OWNER),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('returns full details (including address) when ownership check passes', async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty());
+      repo.findByIdWithDetails.mockResolvedValue({
+        ...baseProperty({ address: '123 rue test' }),
+        images: [],
+        documents: [],
+      });
+
+      const result = await service.getByIdForOwner(PROP_ID, OWNER_ID, Role.OWNER);
+
+      expect(result.address).toBe('123 rue test');
     });
   });
 

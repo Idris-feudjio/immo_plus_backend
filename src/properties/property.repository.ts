@@ -141,14 +141,21 @@ export class PropertyRepository extends BaseRepository<Property, PropertyCreateD
   /**
    * Paginated list with cover image, using SearchRequest for filtering / sorting.
    * @param extraWhere  Server-side conditions merged before search (e.g. { ownerId, deletedAt: null }).
+   * @param publicSearch  When true, excludes `address` from full-text search — otherwise an
+   *   unauthenticated caller could reconstruct the masked address via `?search=<guess>` even
+   *   though the response itself strips it (see PropertiesService.maskAddress()).
    */
   async findListPaginated(
     request: ISearchRequest,
     extraWhere: Record<string, unknown> = {},
+    publicSearch = false,
   ): Promise<PaginatedResult<PropertyListItem>> {
     const pageNumber = request.pageNumber ?? 0;
     const pageSize = request.pageSize ?? 10;
-    const where = this.buildSearchWhere(request, { deletedAt: null, ...extraWhere });
+    const searchFields = publicSearch
+      ? PROPERTY_QUERY_FIELDS.filter((f) => f.prismaField !== 'address')
+      : undefined;
+    const where = this.buildSearchWhere(request, { deletedAt: null, ...extraWhere }, searchFields);
     const rawOrder = this.buildSearchOrderBy(request.sortClauses);
     const orderBy: Prisma.PropertyOrderByWithRelationInput =
       rawOrder.length > 0
@@ -197,7 +204,7 @@ export class PropertyRepository extends BaseRepository<Property, PropertyCreateD
   }
 
   async createImages(
-    items: { propertyId: string; url: string; thumbUrl: string; isCover: boolean; order: number }[],
+    items: { id?: string; propertyId: string; url: string; thumbUrl: string; isCover: boolean; order: number }[],
   ): Promise<PropertyImage[]> {
     return Promise.all(items.map((data) => this.prisma.propertyImage.create({ data })));
   }
