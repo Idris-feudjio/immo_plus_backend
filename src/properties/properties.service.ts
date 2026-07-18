@@ -48,9 +48,14 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
   }
 
   async listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {
+    // Public search must only ever surface AVAILABLE properties. Status is forced
+    // via extraWhere AND stripped from the client query before toSearchRequest() —
+    // buildSearchWhere() applies baseWhere first then filter-derived keys on top of
+    // it, so a client-supplied `?status=RENTED` would otherwise silently overwrite
+    // this constraint (same `status` key, later assignment wins).
     const result = await this.repository.findListPaginated(
-      this.toSearchRequest(query),
-      { isPublished: true },
+      this.toSearchRequest({ ...query, status: undefined }),
+      { isPublished: true, status: PropertyStatus.AVAILABLE },
       true,
     );
     return { ...result, data: result.data.map((item) => this.maskAddress(item)) };

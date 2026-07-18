@@ -297,7 +297,26 @@ describe('PropertiesService', () => {
       expect(result.data[0].address).toBe('');
       expect(result.data[0].city).toBe('Yaoundé');
       expect(result.data[0].neighborhood).toBe('Bastos');
-      expect(repo.findListPaginated).toHaveBeenCalledWith(expect.anything(), { isPublished: true }, true);
+      expect(repo.findListPaginated).toHaveBeenCalledWith(
+        expect.anything(),
+        { isPublished: true, status: PropertyStatus.AVAILABLE },
+        true,
+      );
+    });
+
+    it('listPublic() forces status=AVAILABLE and ignores a client-supplied status filter', async () => {
+      repo.findListPaginated.mockResolvedValue({
+        data: [],
+        meta: { total: 0, pageNumber: 0, pageSize: 20, totalPages: 0 },
+      });
+
+      // A visitor crafting ?status=RENTED must not be able to see non-available
+      // published properties on the public search.
+      await service.listPublic({ status: PropertyStatus.RENTED } as never);
+
+      const [searchRequest, extraWhere] = repo.findListPaginated.mock.calls[0];
+      expect(extraWhere).toEqual({ isPublished: true, status: PropertyStatus.AVAILABLE });
+      expect((searchRequest as { filters?: Record<string, unknown> }).filters?.status).toBeUndefined();
     });
 
     it('getBySlug() masks address but keeps latitude/longitude/city/neighborhood', async () => {
