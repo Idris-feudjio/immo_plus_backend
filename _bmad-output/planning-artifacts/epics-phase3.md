@@ -348,6 +348,7 @@ So that Cloudflare R2 is never polluted with wrong file types or oversized uploa
 - Document preset: `new FileValidationPipe(['application/pdf'], 10 * 1024 * 1024)`
 - Apply via `@UploadedFile(new FileValidationPipe(...))` on each endpoint
 - This replaces Story 11.1 and 11.2's individual validation if those were written inline
+- **Added scope (2026-07-18, folded in from Story 11.1 review):** `PropertiesController.uploadDocuments()` (`properties.controller.ts:226-242`) still returns hardcoded `` `https://placeholder/${f.originalname}` `` URLs instead of calling `StorageService.uploadBuffer()` — it was never wired to R2, unlike images (11.1) and maintenance photos (11.2). Not covered by any existing FR-50/51/52 AC. While adding the `FileValidationPipe` document preset to this endpoint, also wire the actual `storageService.uploadBuffer()` call so uploaded property documents persist to R2 with real URLs (key pattern: `properties/{propertyId}/documents/{documentId}.{ext}`, consistent with the images convention).
 
 ---
 

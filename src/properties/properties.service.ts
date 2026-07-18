@@ -14,10 +14,20 @@ import {
 import { BaseService } from '../common/abstractions/base.service';
 import { StorageService } from '../storage/storage.service';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { ISearchRequest, SortClause } from '../common/interfaces/search-request.interface';
+import type {
+  ISearchRequest,
+  SortClause,
+} from '../common/interfaces/search-request.interface';
 import { v4 as uuidv4 } from 'uuid';
-import { CreatePropertyDto, FilterPropertiesDto, UpdatePropertyDto } from './dto/create-property.dto';
-import { PropertyDocumentInput, PropertyImageInput } from './dto/create-property.dto';
+import {
+  CreatePropertyDto,
+  FilterPropertiesDto,
+  UpdatePropertyDto,
+} from './dto/create-property.dto';
+import {
+  PropertyDocumentInput,
+  PropertyImageInput,
+} from './dto/create-property.dto';
 import {
   PropertyCreateData,
   PropertyListItem,
@@ -39,7 +49,10 @@ function buildPriceLabel(price: number): string {
 }
 
 @Injectable()
-export class PropertiesService extends BaseService<Property, PropertyCreateData> {
+export class PropertiesService extends BaseService<
+  Property,
+  PropertyCreateData
+> {
   constructor(
     protected override readonly repository: PropertyRepository,
     private readonly storage: StorageService,
@@ -47,7 +60,9 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     super(repository);
   }
 
-  async listPublic(query: FilterPropertiesDto): Promise<PaginatedResult<PropertyListItem>> {
+  async listPublic(
+    query: FilterPropertiesDto,
+  ): Promise<PaginatedResult<PropertyListItem>> {
     // Public search must only ever surface AVAILABLE properties. Status is forced
     // via extraWhere AND stripped from the client query before toSearchRequest() —
     // buildSearchWhere() applies baseWhere first then filter-derived keys on top of
@@ -58,7 +73,10 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
       { isPublished: true, status: PropertyStatus.AVAILABLE },
       true,
     );
-    return { ...result, data: result.data.map((item) => this.maskAddress(item)) };
+    return {
+      ...result,
+      data: result.data.map((item) => this.maskAddress(item)),
+    };
   }
 
   listDashboard(
@@ -67,11 +85,16 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     query: FilterPropertiesDto,
   ): Promise<PaginatedResult<PropertyListItem>> {
     const extraWhere =
-      role === Role.ADMIN ? {} :
-      role === Role.MANAGER ? { managerId: userId } :
-      { ownerId: userId };
+      role === Role.ADMIN
+        ? {}
+        : role === Role.MANAGER
+          ? { managerId: userId }
+          : { ownerId: userId };
 
-    return this.repository.findListPaginated(this.toSearchRequest(query), extraWhere);
+    return this.repository.findListPaginated(
+      this.toSearchRequest(query),
+      extraWhere,
+    );
   }
 
   async getBySlug(slug: string): Promise<PropertyWithDetails> {
@@ -86,12 +109,19 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     return property;
   }
 
-  async getByIdForOwner(id: string, userId: string, role: string): Promise<PropertyWithDetails> {
+  async getByIdForOwner(
+    id: string,
+    userId: string,
+    role: string,
+  ): Promise<PropertyWithDetails> {
     await this.checkOwnership(id, userId, role);
     return this.getById(id);
   }
 
-  async createProperty(ownerId: string, dto: CreatePropertyDto): Promise<Property> {
+  async createProperty(
+    ownerId: string,
+    dto: CreatePropertyDto,
+  ): Promise<Property> {
     const slug = `${slugify(dto.title)}-${uuidv4().substring(0, 8)}`;
     return this.repository.create({
       ...dto,
@@ -124,7 +154,9 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     if (isPublished) {
       const imageCount = await this.repository.countImages(id);
       if (imageCount === 0) {
-        throw new ConflictException('Le bien doit avoir au moins 1 image pour être publié.');
+        throw new ConflictException(
+          'Le bien doit avoir au moins 1 image pour être publié.',
+        );
       }
     }
 
@@ -138,7 +170,9 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     status: PropertyStatus,
   ): Promise<Property> {
     if (status === PropertyStatus.RENTED && role !== Role.ADMIN) {
-      throw new ForbiddenException('Le statut Rented est géré automatiquement.');
+      throw new ForbiddenException(
+        'Le statut Rented est géré automatiquement.',
+      );
     }
     await this.checkOwnership(id, userId, role);
     return this.repository.update(id, { status });
@@ -162,7 +196,12 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
    * anything to R2 — so an unauthorized caller or an over-quota request never triggers
    * real storage writes. addImages() re-runs this right before inserting DB rows.
    */
-  private async assertImageQuota(id: string, userId: string, role: string, incomingCount: number): Promise<number> {
+  private async assertImageQuota(
+    id: string,
+    userId: string,
+    role: string,
+    incomingCount: number,
+  ): Promise<number> {
     await this.checkOwnership(id, userId, role);
     const currentCount = await this.repository.countImages(id);
     if (currentCount + incomingCount > 20) {
@@ -174,7 +213,12 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     return currentCount;
   }
 
-  async assertCanAddImages(id: string, userId: string, role: string, incomingCount: number): Promise<void> {
+  async assertCanAddImages(
+    id: string,
+    userId: string,
+    role: string,
+    incomingCount: number,
+  ): Promise<void> {
     await this.assertImageQuota(id, userId, role, incomingCount);
   }
 
@@ -184,7 +228,12 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     role: string,
     images: PropertyImageInput[],
   ): Promise<{ images: PropertyImage[] }> {
-    const currentCount = await this.assertImageQuota(id, userId, role, images.length);
+    const currentCount = await this.assertImageQuota(
+      id,
+      userId,
+      role,
+      images.length,
+    );
 
     const hasCover = await this.repository.findFirstCoverImage(id);
 
@@ -222,12 +271,12 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     const img = await this.repository.findImageById(imageId, propertyId);
     if (!img) throw new NotFoundException('Image introuvable.');
 
-    await this.repository.deleteImageById(imageId);
-
     await this.storage.delete(this.storage.keyFromUrl(img.url));
     if (img.thumbUrl) {
       await this.storage.delete(this.storage.keyFromUrl(img.thumbUrl));
     }
+
+    await this.repository.deleteImageById(imageId);
 
     if (img.isCover) {
       const next = await this.repository.findFirstImage(propertyId);
@@ -267,10 +316,10 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
   private toSearchRequest(dto: FilterPropertiesDto): ISearchRequest {
     const filters: Record<string, string[]> = {};
 
-    if (dto.city)               filters.city         = [dto.city];
-    if (dto.neighborhood)       filters.neighborhood = [dto.neighborhood];
-    if (dto.type)               filters.type         = [dto.type];
-    if (dto.status)             filters.status       = [dto.status];
+    if (dto.city) filters.city = [dto.city];
+    if (dto.neighborhood) filters.neighborhood = [dto.neighborhood];
+    if (dto.type) filters.type = [dto.type];
+    if (dto.status) filters.status = [dto.status];
     if (dto.bedrooms !== undefined) filters.bedrooms = [String(dto.bedrooms)];
     if (dto.minPrice !== undefined || dto.maxPrice !== undefined) {
       filters.price = [String(dto.minPrice ?? ''), String(dto.maxPrice ?? '')];
@@ -280,21 +329,28 @@ export class PropertiesService extends BaseService<Property, PropertyCreateData>
     }
 
     const sortClauses: SortClause[] = [];
-    if (dto.sort === 'price')     sortClauses.push({ fieldName: 'price',     direction: 'ASC' });
-    else if (dto.sort === '-price')    sortClauses.push({ fieldName: 'price',     direction: 'DESC' });
-    else if (dto.sort === 'createdAt') sortClauses.push({ fieldName: 'createdAt', direction: 'ASC' });
-    else                               sortClauses.push({ fieldName: 'createdAt', direction: 'DESC' });
+    if (dto.sort === 'price')
+      sortClauses.push({ fieldName: 'price', direction: 'ASC' });
+    else if (dto.sort === '-price')
+      sortClauses.push({ fieldName: 'price', direction: 'DESC' });
+    else if (dto.sort === 'createdAt')
+      sortClauses.push({ fieldName: 'createdAt', direction: 'ASC' });
+    else sortClauses.push({ fieldName: 'createdAt', direction: 'DESC' });
 
     return {
-      searchKey:  dto.search,
+      searchKey: dto.search,
       filters,
-      pageNumber: (dto.page ?? 1) - 1,   // FilterPropertiesDto is 1-based → 0-based
-      pageSize:   dto.limit ?? 20,
+      pageNumber: (dto.page ?? 1) - 1, // FilterPropertiesDto is 1-based → 0-based
+      pageSize: dto.limit ?? 20,
       sortClauses,
     };
   }
 
-  private async checkOwnership(id: string, userId: string, role: string): Promise<Property> {
+  private async checkOwnership(
+    id: string,
+    userId: string,
+    role: string,
+  ): Promise<Property> {
     const property = await this.repository.findByIdActive(id);
     if (!property) throw new NotFoundException('Bien introuvable.');
 

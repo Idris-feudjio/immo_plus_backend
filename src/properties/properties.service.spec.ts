@@ -47,7 +47,7 @@ function baseProperty(overrides: Partial<Property> = {}): Property {
     id: PROP_ID,
     slug: 'villa-test-abc12345',
     title: 'Villa Test',
-    type: 'VILLA' as Property['type'],
+    type: 'VILLA',
     city: 'Yaoundé',
     neighborhood: 'Bastos',
     address: '123 rue test',
@@ -76,7 +76,13 @@ function baseProperty(overrides: Partial<Property> = {}): Property {
 describe('PropertiesService', () => {
   let service: PropertiesService;
   let repo: jest.Mocked<PropertyRepository>;
-  let storage: { delete: jest.Mock; keyFromUrl: jest.Mock; uploadBuffer: jest.Mock; generateId: jest.Mock; generateKey: jest.Mock };
+  let storage: {
+    delete: jest.Mock;
+    keyFromUrl: jest.Mock;
+    uploadBuffer: jest.Mock;
+    generateId: jest.Mock;
+    generateKey: jest.Mock;
+  };
 
   beforeEach(() => {
     repo = mockRepo();
@@ -107,7 +113,7 @@ describe('PropertiesService', () => {
       const created = baseProperty({ title: 'Belle villa', price: 300000 });
       repo.create.mockResolvedValue(created);
 
-      const result = await service.createProperty(OWNER_ID, dto as never);
+      const result = await service.createProperty(OWNER_ID, dto);
 
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -138,14 +144,21 @@ describe('PropertiesService', () => {
       repo.countImages.mockResolvedValue(2);
       repo.update.mockResolvedValue(baseProperty({ isPublished: true }));
 
-      const result = await service.setPublished(PROP_ID, OWNER_ID, Role.OWNER, true);
+      const result = await service.setPublished(
+        PROP_ID,
+        OWNER_ID,
+        Role.OWNER,
+        true,
+      );
 
       expect(repo.update).toHaveBeenCalledWith(PROP_ID, { isPublished: true });
       expect(result.isPublished).toBe(true);
     });
 
     it('unpublishes without checking image count', async () => {
-      repo.findByIdActive.mockResolvedValue(baseProperty({ isPublished: true }));
+      repo.findByIdActive.mockResolvedValue(
+        baseProperty({ isPublished: true }),
+      );
       repo.update.mockResolvedValue(baseProperty({ isPublished: false }));
 
       await service.setPublished(PROP_ID, OWNER_ID, Role.OWNER, false);
@@ -166,9 +179,16 @@ describe('PropertiesService', () => {
 
     it('allows ADMIN to set RENTED', async () => {
       repo.findByIdActive.mockResolvedValue(baseProperty());
-      repo.update.mockResolvedValue(baseProperty({ status: PropertyStatus.RENTED }));
+      repo.update.mockResolvedValue(
+        baseProperty({ status: PropertyStatus.RENTED }),
+      );
 
-      const result = await service.setStatus(PROP_ID, 'admin-id', Role.ADMIN, PropertyStatus.RENTED);
+      const result = await service.setStatus(
+        PROP_ID,
+        'admin-id',
+        Role.ADMIN,
+        PropertyStatus.RENTED,
+      );
 
       expect(result.status).toBe(PropertyStatus.RENTED);
     });
@@ -215,26 +235,49 @@ describe('PropertiesService', () => {
     it('allows adding images up to exactly 20', async () => {
       repo.findByIdActive.mockResolvedValue(baseProperty());
       repo.countImages.mockResolvedValue(19);
-      repo.findFirstCoverImage.mockResolvedValue({ id: 'existing-cover' } as never);
+      repo.findFirstCoverImage.mockResolvedValue({
+        id: 'existing-cover',
+      } as never);
       repo.createImages.mockResolvedValue([]);
 
-      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [{ id: 'img-a', url: 'a.jpg', thumbUrl: 'a-t.jpg' }]);
+      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [
+        { id: 'img-a', url: 'a.jpg', thumbUrl: 'a-t.jpg' },
+      ]);
 
       expect(repo.createImages).toHaveBeenCalled();
     });
 
-    it('sets first uploaded image as cover when no cover exists', async () => {
+    it('sets first uploaded image as cover when no cover exists, and persists the real R2 URLs unchanged (AC#3)', async () => {
       repo.findByIdActive.mockResolvedValue(baseProperty());
       repo.countImages.mockResolvedValue(0);
       repo.findFirstCoverImage.mockResolvedValue(null);
+      const r2Url = 'https://r2.example.com/properties/prop-1/images/img-1.jpg';
+      const r2ThumbUrl =
+        'https://r2.example.com/properties/prop-1/images/img-1-thumb.jpg';
       repo.createImages.mockResolvedValue([
-        { id: 'img-1', propertyId: PROP_ID, url: 'a.jpg', thumbUrl: null, isCover: true, order: 0, createdAt: new Date() },
+        {
+          id: 'img-1',
+          propertyId: PROP_ID,
+          url: r2Url,
+          thumbUrl: r2ThumbUrl,
+          isCover: true,
+          order: 0,
+          createdAt: new Date(),
+        },
       ]);
 
-      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [{ id: 'img-1', url: 'a.jpg', thumbUrl: 'a-t.jpg' }]);
+      await service.addImages(PROP_ID, OWNER_ID, Role.OWNER, [
+        { id: 'img-1', url: r2Url, thumbUrl: r2ThumbUrl },
+      ]);
 
       expect(repo.createImages).toHaveBeenCalledWith([
-        expect.objectContaining({ id: 'img-1', isCover: true, order: 0 }),
+        expect.objectContaining({
+          id: 'img-1',
+          url: r2Url,
+          thumbUrl: r2ThumbUrl,
+          isCover: true,
+          order: 0,
+        }),
       ]);
     });
   });
@@ -245,15 +288,45 @@ describe('PropertiesService', () => {
     it('deletes the DB row and both R2 objects (image + thumbnail)', async () => {
       repo.findByIdActive.mockResolvedValue(baseProperty());
       repo.findImageById.mockResolvedValue({
-        id: 'img-1', propertyId: PROP_ID, url: 'https://r2/properties/prop-1/images/img-1.jpg',
-        thumbUrl: 'https://r2/properties/prop-1/images/img-1-thumb.jpg', isCover: false, order: 0, createdAt: new Date(),
+        id: 'img-1',
+        propertyId: PROP_ID,
+        url: 'https://r2/properties/prop-1/images/img-1.jpg',
+        thumbUrl: 'https://r2/properties/prop-1/images/img-1-thumb.jpg',
+        isCover: false,
+        order: 0,
+        createdAt: new Date(),
       });
 
       await service.removeImage(PROP_ID, 'img-1', OWNER_ID, Role.OWNER);
 
       expect(repo.deleteImageById).toHaveBeenCalledWith('img-1');
-      expect(storage.delete).toHaveBeenCalledWith('properties/prop-1/images/img-1.jpg');
-      expect(storage.delete).toHaveBeenCalledWith('properties/prop-1/images/img-1-thumb.jpg');
+      expect(storage.delete).toHaveBeenCalledWith(
+        'properties/prop-1/images/img-1.jpg',
+      );
+      expect(storage.delete).toHaveBeenCalledWith(
+        'properties/prop-1/images/img-1-thumb.jpg',
+      );
+    });
+
+    it('deletes both R2 objects BEFORE removing the DB row (AC#2 ordering)', async () => {
+      repo.findByIdActive.mockResolvedValue(baseProperty());
+      repo.findImageById.mockResolvedValue({
+        id: 'img-1',
+        propertyId: PROP_ID,
+        url: 'https://r2/properties/prop-1/images/img-1.jpg',
+        thumbUrl: 'https://r2/properties/prop-1/images/img-1-thumb.jpg',
+        isCover: false,
+        order: 0,
+        createdAt: new Date(),
+      });
+
+      await service.removeImage(PROP_ID, 'img-1', OWNER_ID, Role.OWNER);
+
+      const lastStorageDeleteOrder = Math.max(
+        ...storage.delete.mock.invocationCallOrder,
+      );
+      const dbDeleteOrder = repo.deleteImageById.mock.invocationCallOrder[0];
+      expect(lastStorageDeleteOrder).toBeLessThan(dbDeleteOrder);
     });
 
     it('throws NotFoundException when image does not exist', async () => {
@@ -269,10 +342,22 @@ describe('PropertiesService', () => {
     it('promotes the next image to cover when the deleted image was the cover', async () => {
       repo.findByIdActive.mockResolvedValue(baseProperty());
       repo.findImageById.mockResolvedValue({
-        id: 'img-1', propertyId: PROP_ID, url: 'https://r2/a.jpg', thumbUrl: null, isCover: true, order: 0, createdAt: new Date(),
+        id: 'img-1',
+        propertyId: PROP_ID,
+        url: 'https://r2/a.jpg',
+        thumbUrl: null,
+        isCover: true,
+        order: 0,
+        createdAt: new Date(),
       });
       repo.findFirstImage.mockResolvedValue({
-        id: 'img-2', propertyId: PROP_ID, url: 'https://r2/b.jpg', thumbUrl: null, isCover: false, order: 1, createdAt: new Date(),
+        id: 'img-2',
+        propertyId: PROP_ID,
+        url: 'https://r2/b.jpg',
+        thumbUrl: null,
+        isCover: false,
+        order: 1,
+        createdAt: new Date(),
       });
 
       await service.removeImage(PROP_ID, 'img-1', OWNER_ID, Role.OWNER);
@@ -287,7 +372,24 @@ describe('PropertiesService', () => {
     it('listPublic() masks address but keeps other fields', async () => {
       repo.findListPaginated.mockResolvedValue({
         data: [
-          { id: PROP_ID, slug: 'villa-test-abc12345', title: 'Villa Test', type: 'VILLA', city: 'Yaoundé', neighborhood: 'Bastos', address: '123 rue test', price: 250000, priceLabel: '250 000 FCFA/mois', area: 120, bedrooms: 3, bathrooms: 2, status: PropertyStatus.AVAILABLE, isPublished: true, createdAt: new Date(), images: [] } as never,
+          {
+            id: PROP_ID,
+            slug: 'villa-test-abc12345',
+            title: 'Villa Test',
+            type: 'VILLA',
+            city: 'Yaoundé',
+            neighborhood: 'Bastos',
+            address: '123 rue test',
+            price: 250000,
+            priceLabel: '250 000 FCFA/mois',
+            area: 120,
+            bedrooms: 3,
+            bathrooms: 2,
+            status: PropertyStatus.AVAILABLE,
+            isPublished: true,
+            createdAt: new Date(),
+            images: [],
+          } as never,
         ],
         meta: { total: 1, pageNumber: 0, pageSize: 20, totalPages: 1 },
       });
@@ -312,16 +414,27 @@ describe('PropertiesService', () => {
 
       // A visitor crafting ?status=RENTED must not be able to see non-available
       // published properties on the public search.
-      await service.listPublic({ status: PropertyStatus.RENTED } as never);
+      await service.listPublic({ status: PropertyStatus.RENTED });
 
       const [searchRequest, extraWhere] = repo.findListPaginated.mock.calls[0];
-      expect(extraWhere).toEqual({ isPublished: true, status: PropertyStatus.AVAILABLE });
-      expect((searchRequest as { filters?: Record<string, unknown> }).filters?.status).toBeUndefined();
+      expect(extraWhere).toEqual({
+        isPublished: true,
+        status: PropertyStatus.AVAILABLE,
+      });
+      expect(
+        (searchRequest as { filters?: Record<string, unknown> }).filters
+          ?.status,
+      ).toBeUndefined();
     });
 
     it('getBySlug() masks address but keeps latitude/longitude/city/neighborhood', async () => {
       repo.findBySlugPublic.mockResolvedValue({
-        ...baseProperty({ address: '123 rue test', latitude: 3.848 as never, longitude: 11.502 as never, isPublished: true }),
+        ...baseProperty({
+          address: '123 rue test',
+          latitude: 3.848 as never,
+          longitude: 11.502 as never,
+          isPublished: true,
+        }),
         images: [],
         documents: [],
       });
@@ -338,7 +451,24 @@ describe('PropertiesService', () => {
     it('listDashboard() does NOT mask address (authenticated route)', async () => {
       repo.findListPaginated.mockResolvedValue({
         data: [
-          { id: PROP_ID, slug: 'villa-test-abc12345', title: 'Villa Test', type: 'VILLA', city: 'Yaoundé', neighborhood: 'Bastos', address: '123 rue test', price: 250000, priceLabel: '250 000 FCFA/mois', area: 120, bedrooms: 3, bathrooms: 2, status: PropertyStatus.AVAILABLE, isPublished: true, createdAt: new Date(), images: [] } as never,
+          {
+            id: PROP_ID,
+            slug: 'villa-test-abc12345',
+            title: 'Villa Test',
+            type: 'VILLA',
+            city: 'Yaoundé',
+            neighborhood: 'Bastos',
+            address: '123 rue test',
+            price: 250000,
+            priceLabel: '250 000 FCFA/mois',
+            area: 120,
+            bedrooms: 3,
+            bathrooms: 2,
+            status: PropertyStatus.AVAILABLE,
+            isPublished: true,
+            createdAt: new Date(),
+            images: [],
+          } as never,
         ],
         meta: { total: 1, pageNumber: 0, pageSize: 20, totalPages: 1 },
       });
@@ -373,7 +503,9 @@ describe('PropertiesService', () => {
     });
 
     it("throws ForbiddenException when OWNER requests another owner's property", async () => {
-      repo.findByIdActive.mockResolvedValue(baseProperty({ ownerId: 'other-owner' }));
+      repo.findByIdActive.mockResolvedValue(
+        baseProperty({ ownerId: 'other-owner' }),
+      );
 
       await expect(
         service.getByIdForOwner(PROP_ID, OWNER_ID, Role.OWNER),
@@ -388,7 +520,11 @@ describe('PropertiesService', () => {
         documents: [],
       });
 
-      const result = await service.getByIdForOwner(PROP_ID, OWNER_ID, Role.OWNER);
+      const result = await service.getByIdForOwner(
+        PROP_ID,
+        OWNER_ID,
+        Role.OWNER,
+      );
 
       expect(result.address).toBe('123 rue test');
     });
@@ -405,8 +541,10 @@ describe('PropertiesService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws ForbiddenException when OWNER tries to modify another owner\'s property', async () => {
-      repo.findByIdActive.mockResolvedValue(baseProperty({ ownerId: 'other-owner' }));
+    it("throws ForbiddenException when OWNER tries to modify another owner's property", async () => {
+      repo.findByIdActive.mockResolvedValue(
+        baseProperty({ ownerId: 'other-owner' }),
+      );
 
       await expect(
         service.updateProperty(PROP_ID, OWNER_ID, Role.OWNER, {}),
@@ -414,10 +552,17 @@ describe('PropertiesService', () => {
     });
 
     it('allows ADMIN to modify any property', async () => {
-      repo.findByIdActive.mockResolvedValue(baseProperty({ ownerId: 'other-owner' }));
+      repo.findByIdActive.mockResolvedValue(
+        baseProperty({ ownerId: 'other-owner' }),
+      );
       repo.update.mockResolvedValue(baseProperty({ title: 'Updated' }));
 
-      const result = await service.updateProperty(PROP_ID, 'admin-id', Role.ADMIN, { title: 'Updated' });
+      const result = await service.updateProperty(
+        PROP_ID,
+        'admin-id',
+        Role.ADMIN,
+        { title: 'Updated' },
+      );
 
       expect(repo.update).toHaveBeenCalled();
       expect(result.title).toBe('Updated');

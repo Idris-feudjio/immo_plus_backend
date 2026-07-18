@@ -26,7 +26,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, ideally different LLM)
 
 generated: 2026-06-12
-last_updated: 2026-06-14 # 10-2 ready-for-dev — RBAC story file created
+last_updated: 2026-07-18 # 11-1 → review — AC2 delete-ordering fixed + test coverage added, 312/312 tests pass
 project: immo-plus-backend
 project_key: IMMO
 tracking_system: file-system
@@ -171,10 +171,10 @@ development_status:
   # ─────────────────────────────────────────────────────────────────
   # EP-11: File Storage Completion (Phase 3)
   # ─────────────────────────────────────────────────────────────────
-  epic-11: backlog
-  11-1-property-image-upload-r2: backlog
+  epic-11: in-progress
+  11-1-property-image-upload-r2: review  # AC2 delete-order fixed, tests added, 312/312 suite green — ready for code-review
   11-2-maintenance-photo-upload-r2: backlog
-  11-3-file-upload-mime-size-validation: backlog
+  11-3-file-upload-mime-size-validation: backlog # scope expanded 2026-07-18: also wire properties.controller.ts uploadDocuments() to real R2 storage (was never wired, unlike 11.1/11.2)
 
   # ─────────────────────────────────────────────────────────────────
   # EP-12: Data Integrity (Phase 3)
