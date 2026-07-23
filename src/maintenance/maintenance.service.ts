@@ -20,11 +20,20 @@ import { EmailQueueService } from '../notifications/email-queue.service';
 import { NotificationRepository } from '../notifications/notification.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import type { CreateMaintenanceDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
-import { MaintenanceCreateData, MaintenanceRepository } from './maintenance.repository';
+import type {
+  CreateMaintenanceDto,
+  UpdateMaintenanceStatusDto,
+} from './dto/maintenance.dto';
+import {
+  MaintenanceCreateData,
+  MaintenanceRepository,
+} from './maintenance.repository';
 
 @Injectable()
-export class MaintenanceService extends BaseService<MaintenanceRequest, MaintenanceCreateData> {
+export class MaintenanceService extends BaseService<
+  MaintenanceRequest,
+  MaintenanceCreateData
+> {
   constructor(
     protected override readonly repository: MaintenanceRepository,
     private readonly prisma: PrismaService,
@@ -37,14 +46,19 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
 
   // ── Story 6.1: Create maintenance request ────────────────────────────────────
 
-  async createRequest(user: AuthUser, dto: CreateMaintenanceDto): Promise<MaintenanceRequest> {
+  async createRequest(
+    user: AuthUser,
+    dto: CreateMaintenanceDto,
+  ): Promise<MaintenanceRequest> {
     const property = await this.prisma.property.findFirst({
       where: { id: dto.propertyId, deletedAt: null },
       select: {
         id: true,
         title: true,
         ownerId: true,
-        owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+        owner: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
       },
     });
     if (!property) throw new NotFoundException('PROPERTY_NOT_FOUND');
@@ -52,18 +66,25 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
     let tenantId: string | undefined;
 
     if (user.role === Role.TENANT) {
-      const tenant = await this.prisma.tenant.findFirst({ where: { userId: user.id } });
+      const tenant = await this.prisma.tenant.findFirst({
+        where: { userId: user.id },
+      });
       if (!tenant) throw new ForbiddenException('TENANT_NOT_FOUND');
 
       const contract = await this.prisma.contract.findFirst({
-        where: { propertyId: dto.propertyId, tenantId: tenant.id, status: ContractStatus.ACTIVE },
+        where: {
+          propertyId: dto.propertyId,
+          tenantId: tenant.id,
+          status: ContractStatus.ACTIVE,
+        },
         select: { id: true },
       });
       if (!contract) throw new ForbiddenException('NO_ACTIVE_CONTRACT');
 
       tenantId = tenant.id;
     } else if (user.role === Role.OWNER) {
-      if (property.ownerId !== user.id) throw new ForbiddenException('NOT_PROPERTY_OWNER');
+      if (property.ownerId !== user.id)
+        throw new ForbiddenException('NOT_PROPERTY_OWNER');
     } else if (user.role === Role.MANAGER) {
       const mandates = await this.repository.findManagedPropertyIds(user.id);
       if (!mandates.some((m) => m.propertyId === dto.propertyId)) {
@@ -131,11 +152,18 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
     });
     if (!existing) throw new NotFoundException('MAINTENANCE_NOT_FOUND');
 
-    const ownerManagerStatuses: MaintenanceStatus[] = [MaintenanceStatus.IN_PROGRESS, MaintenanceStatus.RESOLVED];
-    const tenantStatuses: MaintenanceStatus[] = [MaintenanceStatus.CLOSED, MaintenanceStatus.OPEN];
+    const ownerManagerStatuses: MaintenanceStatus[] = [
+      MaintenanceStatus.IN_PROGRESS,
+      MaintenanceStatus.RESOLVED,
+    ];
+    const tenantStatuses: MaintenanceStatus[] = [
+      MaintenanceStatus.CLOSED,
+      MaintenanceStatus.OPEN,
+    ];
 
     if (ownerManagerStatuses.includes(dto.status)) {
-      if (user.role === Role.TENANT) throw new ForbiddenException('TENANT_CANNOT_SET_STATUS');
+      if (user.role === Role.TENANT)
+        throw new ForbiddenException('TENANT_CANNOT_SET_STATUS');
 
       if (user.role === Role.OWNER && existing.property.ownerId !== user.id) {
         throw new ForbiddenException('NOT_PROPERTY_OWNER');
@@ -147,10 +175,16 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
         }
       }
 
-      if (dto.status === MaintenanceStatus.IN_PROGRESS && existing.status !== MaintenanceStatus.OPEN) {
+      if (
+        dto.status === MaintenanceStatus.IN_PROGRESS &&
+        existing.status !== MaintenanceStatus.OPEN
+      ) {
         throw new BadRequestException('INVALID_TRANSITION');
       }
-      if (dto.status === MaintenanceStatus.RESOLVED && existing.status !== MaintenanceStatus.IN_PROGRESS) {
+      if (
+        dto.status === MaintenanceStatus.RESOLVED &&
+        existing.status !== MaintenanceStatus.IN_PROGRESS
+      ) {
         throw new BadRequestException('INVALID_TRANSITION');
       }
     } else if (tenantStatuses.includes(dto.status)) {
@@ -158,7 +192,9 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
         throw new ForbiddenException('ONLY_TENANT_CAN_SET_STATUS');
       }
       if (user.role === Role.TENANT) {
-        const tenant = await this.prisma.tenant.findFirst({ where: { userId: user.id } });
+        const tenant = await this.prisma.tenant.findFirst({
+          where: { userId: user.id },
+        });
         if (!tenant || existing.tenantId !== tenant.id) {
           throw new ForbiddenException('NOT_REQUEST_CREATOR');
         }
@@ -220,7 +256,10 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
 
   // ── Story 6.3: List maintenance requests ─────────────────────────────────────
 
-  async search(user: AuthUser, query: ISearchRequest): Promise<PaginatedResult<MaintenanceRequest>> {
+  async search(
+    user: AuthUser,
+    query: ISearchRequest,
+  ): Promise<PaginatedResult<MaintenanceRequest>> {
     let baseWhere: Record<string, unknown> = {};
 
     if (user.role === Role.OWNER) {
@@ -247,6 +286,7 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
         status: true,
         urgency: true,
         comment: true,
+        images: true,
         createdAt: true,
         updatedAt: true,
         property: { select: { id: true, title: true } },
@@ -276,12 +316,15 @@ export class MaintenanceService extends BaseService<MaintenanceRequest, Maintena
     if (!existing) throw new NotFoundException('MAINTENANCE_NOT_FOUND');
 
     if (user.role === Role.TENANT) {
-      const tenant = await this.prisma.tenant.findFirst({ where: { userId: user.id } });
+      const tenant = await this.prisma.tenant.findFirst({
+        where: { userId: user.id },
+      });
       if (!tenant || existing.tenantId !== tenant.id) {
         throw new ForbiddenException('NOT_REQUEST_CREATOR');
       }
     } else if (user.role === Role.OWNER) {
-      if (existing.property.ownerId !== user.id) throw new ForbiddenException('NOT_PROPERTY_OWNER');
+      if (existing.property.ownerId !== user.id)
+        throw new ForbiddenException('NOT_PROPERTY_OWNER');
     }
 
     if (!files || files.length === 0) throw new BadRequestException('NO_FILES');

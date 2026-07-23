@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { MaintenanceStatus, MaintenanceUrgency, Role } from '@prisma/client';
 import { MaintenanceService } from './maintenance.service';
 
@@ -36,7 +40,9 @@ function mockEmailQueue() {
 
 function mockStorage() {
   return {
-    uploadBuffer: jest.fn((key: string) => Promise.resolve(`https://cdn.r2.dev/${key}`)),
+    uploadBuffer: jest.fn((key: string) =>
+      Promise.resolve(`https://cdn.r2.dev/${key}`),
+    ),
   };
 }
 
@@ -51,10 +57,21 @@ const PROPERTY = {
   id: 'prop-1',
   title: 'Villa Bastos',
   ownerId: 'owner-1',
-  owner: { id: 'owner-1', email: 'owner@test.cm', firstName: 'Marc', lastName: 'Dupont' },
+  owner: {
+    id: 'owner-1',
+    email: 'owner@test.cm',
+    firstName: 'Marc',
+    lastName: 'Dupont',
+  },
 };
 
-const TENANT_RECORD = { id: 'tenant-uuid-1', userId: 'user-tenant-1', email: 'tenant@test.cm', firstName: 'Alice', lastName: 'Ngo' };
+const TENANT_RECORD = {
+  id: 'tenant-uuid-1',
+  userId: 'user-tenant-1',
+  email: 'tenant@test.cm',
+  firstName: 'Alice',
+  lastName: 'Ngo',
+};
 
 const MAINTENANCE_REQUEST = {
   id: 'maint-1',
@@ -104,13 +121,19 @@ describe('MaintenanceService', () => {
   describe('createRequest', () => {
     it('OWNER can create a maintenance request for own property', async () => {
       prisma.property.findFirst.mockResolvedValue(PROPERTY);
-      repository.create.mockResolvedValue({ ...MAINTENANCE_REQUEST, tenantId: null });
+      repository.create.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        tenantId: null,
+      });
 
       const result = await service.createRequest(OWNER_USER, CREATE_DTO);
 
       expect(result.id).toBe('maint-1');
       expect(notifRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'owner-1', type: 'maintenance_created' }),
+        expect.objectContaining({
+          userId: 'owner-1',
+          type: 'maintenance_created',
+        }),
       );
       expect(emailQueue.sendEmail).toHaveBeenCalledTimes(1);
     });
@@ -131,7 +154,9 @@ describe('MaintenanceService', () => {
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
       prisma.contract.findFirst.mockResolvedValue(null);
 
-      await expect(service.createRequest(TENANT_USER, CREATE_DTO)).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.createRequest(TENANT_USER, CREATE_DTO),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('CRITICAL urgency uses priority notification type', async () => {
@@ -142,7 +167,10 @@ describe('MaintenanceService', () => {
         tenantId: null,
       });
 
-      await service.createRequest(OWNER_USER, { ...CREATE_DTO, urgency: MaintenanceUrgency.CRITICAL });
+      await service.createRequest(OWNER_USER, {
+        ...CREATE_DTO,
+        urgency: MaintenanceUrgency.CRITICAL,
+      });
 
       expect(notifRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'maintenance_critical' }),
@@ -152,7 +180,9 @@ describe('MaintenanceService', () => {
     it('throws 404 when property not found', async () => {
       prisma.property.findFirst.mockResolvedValue(null);
 
-      await expect(service.createRequest(OWNER_USER, CREATE_DTO)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.createRequest(OWNER_USER, CREATE_DTO),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -160,61 +190,100 @@ describe('MaintenanceService', () => {
 
   describe('updateStatus', () => {
     it('Owner can move OPEN → IN_PROGRESS', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
-      prisma.maintenanceRequest.update.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.IN_PROGRESS });
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
+      prisma.maintenanceRequest.update.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.IN_PROGRESS,
+      });
       prisma.tenant.findUnique.mockResolvedValue(TENANT_RECORD);
 
-      const result = await service.updateStatus(OWNER_USER, 'maint-1', { status: MaintenanceStatus.IN_PROGRESS });
+      const result = await service.updateStatus(OWNER_USER, 'maint-1', {
+        status: MaintenanceStatus.IN_PROGRESS,
+      });
 
       expect(result.status).toBe(MaintenanceStatus.IN_PROGRESS);
     });
 
     it('Owner can move IN_PROGRESS → RESOLVED', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.IN_PROGRESS });
-      prisma.maintenanceRequest.update.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.RESOLVED });
+      prisma.maintenanceRequest.findUnique.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.IN_PROGRESS,
+      });
+      prisma.maintenanceRequest.update.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.RESOLVED,
+      });
       prisma.tenant.findUnique.mockResolvedValue(TENANT_RECORD);
 
-      const result = await service.updateStatus(OWNER_USER, 'maint-1', { status: MaintenanceStatus.RESOLVED });
+      const result = await service.updateStatus(OWNER_USER, 'maint-1', {
+        status: MaintenanceStatus.RESOLVED,
+      });
 
       expect(result.status).toBe(MaintenanceStatus.RESOLVED);
     });
 
     it('Tenant can close (RESOLVED → CLOSED)', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.RESOLVED });
+      prisma.maintenanceRequest.findUnique.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.RESOLVED,
+      });
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
-      prisma.maintenanceRequest.update.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.CLOSED });
+      prisma.maintenanceRequest.update.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.CLOSED,
+      });
       prisma.tenant.findUnique.mockResolvedValue(TENANT_RECORD);
 
-      const result = await service.updateStatus(TENANT_USER, 'maint-1', { status: MaintenanceStatus.CLOSED });
+      const result = await service.updateStatus(TENANT_USER, 'maint-1', {
+        status: MaintenanceStatus.CLOSED,
+      });
 
       expect(result.status).toBe(MaintenanceStatus.CLOSED);
     });
 
     it('Tenant can reopen (RESOLVED → OPEN)', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.RESOLVED });
+      prisma.maintenanceRequest.findUnique.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.RESOLVED,
+      });
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
-      prisma.maintenanceRequest.update.mockResolvedValue({ ...MAINTENANCE_REQUEST, status: MaintenanceStatus.OPEN });
+      prisma.maintenanceRequest.update.mockResolvedValue({
+        ...MAINTENANCE_REQUEST,
+        status: MaintenanceStatus.OPEN,
+      });
       prisma.tenant.findUnique.mockResolvedValue(TENANT_RECORD);
 
-      const result = await service.updateStatus(TENANT_USER, 'maint-1', { status: MaintenanceStatus.OPEN });
+      const result = await service.updateStatus(TENANT_USER, 'maint-1', {
+        status: MaintenanceStatus.OPEN,
+      });
 
       expect(result.status).toBe(MaintenanceStatus.OPEN);
     });
 
     it('Tenant cannot set IN_PROGRESS → 403', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
 
       await expect(
-        service.updateStatus(TENANT_USER, 'maint-1', { status: MaintenanceStatus.IN_PROGRESS }),
+        service.updateStatus(TENANT_USER, 'maint-1', {
+          status: MaintenanceStatus.IN_PROGRESS,
+        }),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('Invalid transition OPEN → CLOSED throws 400', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
 
       await expect(
-        service.updateStatus(TENANT_USER, 'maint-1', { status: MaintenanceStatus.CLOSED }),
+        service.updateStatus(TENANT_USER, 'maint-1', {
+          status: MaintenanceStatus.CLOSED,
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -222,7 +291,9 @@ describe('MaintenanceService', () => {
       prisma.maintenanceRequest.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateStatus(OWNER_USER, 'missing', { status: MaintenanceStatus.IN_PROGRESS }),
+        service.updateStatus(OWNER_USER, 'missing', {
+          status: MaintenanceStatus.IN_PROGRESS,
+        }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -257,8 +328,14 @@ describe('MaintenanceService', () => {
     });
 
     it('MANAGER scopes to mandated properties', async () => {
-      repository.findManagedPropertyIds.mockResolvedValue([{ propertyId: 'prop-1' }, { propertyId: 'prop-2' }]);
-      repository.findWithPagination.mockResolvedValue({ data: [], meta: { total: 0, pageSize: 20, pageNumber: 0, totalPages: 0 } });
+      repository.findManagedPropertyIds.mockResolvedValue([
+        { propertyId: 'prop-1' },
+        { propertyId: 'prop-2' },
+      ]);
+      repository.findWithPagination.mockResolvedValue({
+        data: [],
+        meta: { total: 0, pageSize: 20, pageNumber: 0, totalPages: 0 },
+      });
 
       await service.search(MANAGER_USER, {});
 
@@ -274,7 +351,9 @@ describe('MaintenanceService', () => {
   describe('getMyRequests', () => {
     it('returns requests for authenticated tenant', async () => {
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
-      prisma.maintenanceRequest.findMany.mockResolvedValue([MAINTENANCE_REQUEST]);
+      prisma.maintenanceRequest.findMany.mockResolvedValue([
+        MAINTENANCE_REQUEST,
+      ]);
 
       const result = await service.getMyRequests('user-tenant-1');
 
@@ -287,7 +366,30 @@ describe('MaintenanceService', () => {
     it('throws 404 when no tenant record exists', async () => {
       prisma.tenant.findFirst.mockResolvedValue(null);
 
-      await expect(service.getMyRequests('user-x')).rejects.toThrow(NotFoundException);
+      await expect(service.getMyRequests('user-x')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('includes photo URLs so a tenant can see their own uploaded photos (AC#2)', async () => {
+      prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
+      prisma.maintenanceRequest.findMany.mockResolvedValue([
+        {
+          ...MAINTENANCE_REQUEST,
+          images: ['https://cdn.r2.dev/maintenance/maint-1/photos/uuid.jpg'],
+        },
+      ]);
+
+      const result = await service.getMyRequests('user-tenant-1');
+
+      expect(prisma.maintenanceRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ images: true }),
+        }),
+      );
+      expect((result.data[0] as { images: string[] }).images).toEqual([
+        'https://cdn.r2.dev/maintenance/maint-1/photos/uuid.jpg',
+      ]);
     });
   });
 
@@ -301,7 +403,9 @@ describe('MaintenanceService', () => {
     } as Express.Multer.File;
 
     it('OWNER can upload photos and they are appended', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
       prisma.maintenanceRequest.update.mockResolvedValue({
         images: ['https://cdn.r2.dev/maintenance/maint-1/photos/uuid.jpg'],
       });
@@ -312,10 +416,31 @@ describe('MaintenanceService', () => {
       expect(result.images).toHaveLength(1);
     });
 
+    it('uploads to the correct R2 key pattern with the file mimetype (AC#1)', async () => {
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
+      prisma.maintenanceRequest.update.mockResolvedValue({
+        images: ['https://cdn.r2.dev/maintenance/maint-1/photos/uuid.jpg'],
+      });
+
+      await service.addPhotos(OWNER_USER, 'maint-1', [FILE]);
+
+      expect(storage.uploadBuffer).toHaveBeenCalledWith(
+        expect.stringMatching(/^maintenance\/maint-1\/photos\/[^/]+\.jpg$/),
+        FILE.buffer,
+        'image/jpeg',
+      );
+    });
+
     it('TENANT who is the creator can upload photos', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
       prisma.tenant.findFirst.mockResolvedValue(TENANT_RECORD);
-      prisma.maintenanceRequest.update.mockResolvedValue({ images: ['https://cdn.r2.dev/maintenance/maint-1/photos/uuid.jpg'] });
+      prisma.maintenanceRequest.update.mockResolvedValue({
+        images: ['https://cdn.r2.dev/maintenance/maint-1/photos/uuid.jpg'],
+      });
 
       const result = await service.addPhotos(TENANT_USER, 'maint-1', [FILE]);
 
@@ -323,23 +448,48 @@ describe('MaintenanceService', () => {
     });
 
     it('TENANT who is NOT the creator throws 403', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
-      prisma.tenant.findFirst.mockResolvedValue({ id: 'tenant-uuid-OTHER', userId: 'user-other' });
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
+      prisma.tenant.findFirst.mockResolvedValue({
+        id: 'tenant-uuid-OTHER',
+        userId: 'user-other',
+      });
 
-      await expect(service.addPhotos(TENANT_USER, 'maint-1', [FILE])).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.addPhotos(TENANT_USER, 'maint-1', [FILE]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('OWNER who does NOT own the property throws 403 (AC#1/#2 authorization gate)', async () => {
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
+      const OTHER_OWNER_USER = { id: 'owner-OTHER', role: Role.OWNER } as never;
+
+      await expect(
+        service.addPhotos(OTHER_OWNER_USER, 'maint-1', [FILE]),
+      ).rejects.toThrow(ForbiddenException);
+      expect(storage.uploadBuffer).not.toHaveBeenCalled();
     });
 
     it('throws 404 when maintenance request not found', async () => {
       prisma.maintenanceRequest.findUnique.mockResolvedValue(null);
 
-      await expect(service.addPhotos(OWNER_USER, 'missing', [FILE])).rejects.toThrow(NotFoundException);
+      await expect(
+        service.addPhotos(OWNER_USER, 'missing', [FILE]),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws 400 when more than 3 files submitted', async () => {
-      prisma.maintenanceRequest.findUnique.mockResolvedValue(MAINTENANCE_REQUEST);
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
       const files = [FILE, FILE, FILE, FILE];
 
-      await expect(service.addPhotos(OWNER_USER, 'maint-1', files)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.addPhotos(OWNER_USER, 'maint-1', files),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });
