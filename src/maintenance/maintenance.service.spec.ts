@@ -433,6 +433,37 @@ describe('MaintenanceService', () => {
       );
     });
 
+    it.each([
+      ['photo.png', 'image/png', 'png'],
+      ['photo.webp', 'image/webp', 'webp'],
+      ['photo', 'image/jpeg', 'jpg'],
+    ])(
+      'maps %s (%s) to the %s extension in the R2 key',
+      async (originalname, mimetype, expectedExt) => {
+        prisma.maintenanceRequest.findUnique.mockResolvedValue(
+          MAINTENANCE_REQUEST,
+        );
+        prisma.maintenanceRequest.update.mockResolvedValue({
+          images: ['https://cdn.r2.dev/maintenance/maint-1/photos/uuid.ext'],
+        });
+        const file = {
+          originalname,
+          mimetype,
+          buffer: Buffer.from('img'),
+        } as Express.Multer.File;
+
+        await service.addPhotos(OWNER_USER, 'maint-1', [file]);
+
+        expect(storage.uploadBuffer).toHaveBeenCalledWith(
+          expect.stringMatching(
+            new RegExp(`^maintenance/maint-1/photos/[^/]+\\.${expectedExt}$`),
+          ),
+          file.buffer,
+          mimetype,
+        );
+      },
+    );
+
     it('TENANT who is the creator can upload photos', async () => {
       prisma.maintenanceRequest.findUnique.mockResolvedValue(
         MAINTENANCE_REQUEST,
@@ -469,6 +500,20 @@ describe('MaintenanceService', () => {
 
       await expect(
         service.addPhotos(OTHER_OWNER_USER, 'maint-1', [FILE]),
+      ).rejects.toThrow(ForbiddenException);
+      expect(storage.uploadBuffer).not.toHaveBeenCalled();
+      expect(prisma.maintenanceRequest.update).not.toHaveBeenCalled();
+    });
+
+    it('checks authorization BEFORE file-count validation — an unauthorized OWNER submitting too many files still gets 403, not 400', async () => {
+      prisma.maintenanceRequest.findUnique.mockResolvedValue(
+        MAINTENANCE_REQUEST,
+      );
+      const OTHER_OWNER_USER = { id: 'owner-OTHER', role: Role.OWNER } as never;
+      const files = [FILE, FILE, FILE, FILE];
+
+      await expect(
+        service.addPhotos(OTHER_OWNER_USER, 'maint-1', files),
       ).rejects.toThrow(ForbiddenException);
       expect(storage.uploadBuffer).not.toHaveBeenCalled();
     });

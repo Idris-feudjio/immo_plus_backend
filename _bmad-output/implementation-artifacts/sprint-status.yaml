@@ -26,7 +26,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, ideally different LLM)
 
 generated: 2026-06-12
-last_updated: 2026-07-23 # 11-2 → review — getMyRequests() images-select gap fixed + test coverage added, 316/316 tests pass
+last_updated: 2026-07-24 # 11-3 → review — FileValidationPipe implemented + applied to properties/maintenance, uploadDocuments() wired to real R2, 333/333 tests pass
 project: immo-plus-backend
 project_key: IMMO
 tracking_system: file-system
@@ -173,8 +173,9 @@ development_status:
   # ─────────────────────────────────────────────────────────────────
   epic-11: in-progress
   11-1-property-image-upload-r2: review  # AC2 delete-order fixed, tests added, 312/312 suite green — ready for code-review
-  11-2-maintenance-photo-upload-r2: review  # AC2 gap fixed (getMyRequests() images select), tests added, 316/316 suite green — ready for code-review
-  11-3-file-upload-mime-size-validation: backlog # scope expanded 2026-07-18: also wire properties.controller.ts uploadDocuments() to real R2 storage (was never wired, unlike 11.1/11.2)
+  11-2-maintenance-photo-upload-r2: done  # AC2 gap fixed, test coverage strengthened, code review passed — 320/320 suite green
+  11-3-file-upload-mime-size-validation: review # FileValidationPipe + properties/maintenance wiring done, uploadDocuments() now real R2, 333/333 suite green — ready for code-review
+  11-4-messages-attachment-upload-r2: backlog # discovered 2026-07-24 during 11.3's audit: MessagesController.uploadAttachment() is a complete stub, never wired to R2, not covered by any existing epic — new story needed
 
   # ─────────────────────────────────────────────────────────────────
   # EP-12: Data Integrity (Phase 3)

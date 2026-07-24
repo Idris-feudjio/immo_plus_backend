@@ -4,7 +4,7 @@ baseline_commit: 61c75e1acab26f8c2a5047dcb07f23da9ba16bff
 
 # Story 11.2: Maintenance photo upload wired to Cloudflare R2
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -41,6 +41,14 @@ so that maintenance evidence is preserved and accessible to property managers.
 - [x] Task 4 — Create `maintenance.controller.spec.ts` (AC: #1)
   - [x] This file does not exist yet — `MaintenanceController` currently has zero test coverage. Model it directly on `properties.controller.spec.ts`'s `describe('PropertiesController — uploadImages()', ...)` block (`properties.controller.spec.ts:64-152`): `Test.createTestingModule` with `controllers: [MaintenanceController]`, `providers: [{ provide: MaintenanceService, useValue: <mocked service> }]`. No guard override is needed (unlike `PropertiesController`, `MaintenanceController` has no `@UseGuards(MandateGuard)` — confirmed by reading the controller; `RolesGuard` is a global `APP_GUARD` and does not run when calling controller methods directly in a unit test).
   - [x] Minimum coverage: `addPhotos()` delegates to `service.addPhotos(user, id, files)` with the right arguments and returns its result. Keep it scoped to this story — do not add coverage for `create`/`updateStatus`/`search`/`getMyRequests` in this file; that's a separate concern.
+
+### Review Findings
+
+- [x] [Review][Decision] `getMyRequests()` payload growth from `images: true` with no size cap — resolved: left as-is, since photos per request are already capped at 3 by `TOO_MANY_FILES`, keeping the array small.
+- [x] [Review][Patch] R2 key-format test only covers the `.jpg` extension path [src/maintenance/maintenance.service.spec.ts] — added `it.each` covering png/webp/no-extension fallback
+- [x] [Review][Patch] OWNER-not-owner 403 test doesn't assert `prisma.maintenanceRequest.update` was also skipped [src/maintenance/maintenance.service.spec.ts] — assertion added
+- [x] [Review][Patch] No test pins that authorization runs before file-count validation in `addPhotos()` [src/maintenance/maintenance.service.ts:278-288] — added test: unauthorized OWNER submitting 4 files still gets 403, not 400
+- [x] [Review][Defer] Heavy `as any`/`as never` casts in new test files [src/maintenance/maintenance.controller.spec.ts, src/maintenance/maintenance.service.spec.ts] — deferred, pre-existing project-wide convention already tracked under Story 16-4 (eliminate-unsafe-typescript-casts)
 
 ## Dev Notes
 
@@ -106,3 +114,4 @@ claude-sonnet-5
 ## Change Log
 
 - 2026-07-23: Story implemented — AC2 gap fixed in `getMyRequests()`, test coverage strengthened for AC1/AC2/authorization, new controller spec added. 316/316 tests passing.
+- 2026-07-24: Code review — 1 decision-needed (resolved: leave `images` payload uncapped, 3-photo max keeps it small), 3 patches applied (extension-mapping test coverage, OWNER-403 update-not-called assertion, auth-before-file-count ordering test), 1 deferred (unsafe-cast convention, tracked under Story 16-4). 320/320 tests passing.

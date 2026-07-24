@@ -21,6 +21,11 @@ const makeFile = (mimetype: string, size = 100): Express.Multer.File => ({
   path: '',
 });
 
+// MIME-type and size validation for addPhotos() is applied via FileValidationPipe
+// (Story 11.3). Pipes only execute in the real HTTP request lifecycle, never on a
+// direct method call like the test below makes, so pipe behavior is covered by
+// src/common/pipes/file-validation.pipe.spec.ts instead — not duplicated here.
+
 describe('MaintenanceController — addPhotos()', () => {
   let controller: MaintenanceController;
   let service: { addPhotos: jest.Mock };

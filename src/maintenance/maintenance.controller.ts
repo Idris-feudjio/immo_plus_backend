@@ -17,8 +17,15 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { SearchRequestDto } from '../common/dto/pagination.dto';
-import { CreateMaintenanceDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
+import { FileValidationPipe } from '../common/pipes/file-validation.pipe';
+import {
+  CreateMaintenanceDto,
+  UpdateMaintenanceStatusDto,
+} from './dto/maintenance.dto';
 import { MaintenanceService } from './maintenance.service';
+
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 
 @ApiTags('Maintenance')
 @Controller('maintenance')
@@ -58,7 +65,9 @@ export class MaintenanceController {
 
   @Patch(':id/status')
   @Roles(Role.TENANT, Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une demande de maintenance' })
+  @ApiOperation({
+    summary: "Mettre à jour le statut d'une demande de maintenance",
+  })
   updateStatus(
     @Param('id') id: string,
     @CurrentUser() user: AuthUser,
@@ -74,11 +83,14 @@ export class MaintenanceController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Ajouter des photos à une demande de maintenance' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FilesInterceptor('photos[]', 3))
+  @UseInterceptors(
+    FilesInterceptor('photos[]', 3, { limits: { fileSize: MAX_PHOTO_SIZE } }),
+  )
   addPhotos(
     @Param('id') id: string,
     @CurrentUser() user: AuthUser,
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles(new FileValidationPipe(ALLOWED_PHOTO_TYPES, MAX_PHOTO_SIZE))
+    files: Express.Multer.File[],
   ) {
     return this.service.addPhotos(user, id, files);
   }
