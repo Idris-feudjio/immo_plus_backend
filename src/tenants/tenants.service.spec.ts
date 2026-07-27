@@ -52,7 +52,10 @@ describe('TenantsService — getMyPayments', () => {
 
   it('returns paginated payments for authenticated tenant', async () => {
     repo.findByUserId.mockResolvedValue(TENANT);
-    repo.findPaymentsForTenant.mockResolvedValue([PAID_PAYMENT, PENDING_PAYMENT]);
+    repo.findPaymentsForTenant.mockResolvedValue([
+      PAID_PAYMENT,
+      PENDING_PAYMENT,
+    ]);
 
     const result = await service.getMyPayments('user-1');
 
@@ -63,7 +66,9 @@ describe('TenantsService — getMyPayments', () => {
   it('throws 404 when no tenant record exists for userId', async () => {
     repo.findByUserId.mockResolvedValue(null);
 
-    await expect(service.getMyPayments('user-1')).rejects.toThrow(NotFoundException);
+    await expect(service.getMyPayments('user-1')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('returns empty data array when tenant has no active contract payments', async () => {

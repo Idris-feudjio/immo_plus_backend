@@ -60,6 +60,11 @@ enum ApplicationStatus {
   REJECTED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
 enum MaintenanceUrgency {
   LOW
   NORMAL
@@ -137,11 +142,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  ownedProperties     Property[]             @relation("PropertyOwner")
-  managedProperties   Property[]             @relation("PropertyManager")
+  ownedProperties     Property[]              @relation("PropertyOwner")
+  managedProperties   Property[]              @relation("PropertyManager")
   tenantProfile       Tenant?
-  sentMessages        Message[]              @relation("MessageSender")
-  receivedMessages    Message[]              @relation("MessageRecipient")
+  sentMessages        Message[]               @relation("MessageSender")
+  receivedMessages    Message[]               @relation("MessageRecipient")
   notifications       Notification[]
   refreshTokens       RefreshToken[]
   otpCodes            OtpCode[]
@@ -149,9 +154,10 @@ model User {
   notificationPrefs   NotificationPreference?
   paymentAlertConfig  PaymentAlertConfig?
   agencyMembership    AgencyMember?
-  managedMandates     Mandate[]              @relation("MandateManager")
-  adminAuditLogs      AdminAuditLog[]        @relation("AdminAuditAdmin")
-  targetAuditLogs     AdminAuditLog[]        @relation("AdminAuditTarget")
+  managedMandates     Mandate[]               @relation("MandateManager")
+  adminAuditLogs      AdminAuditLog[]         @relation("AdminAuditAdmin")
+  targetAuditLogs     AdminAuditLog[]         @relation("AdminAuditTarget")
+  applications        Application[]
 
   @@map("users")
 }
@@ -282,22 +288,28 @@ model Tenant {
 }
 
 model Application {
-  id         String            @id @default(uuid())
-  propertyId String
-  tenantId   String?
-  firstName  String            @db.VarChar(100)
-  lastName   String            @db.VarChar(100)
-  email      String            @db.VarChar(255)
-  phone      String?           @db.VarChar(20)
-  message    String?
-  income     Int?
-  occupation String?           @db.VarChar(150)
-  status     ApplicationStatus @default(PENDING)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  id               String            @id @default(uuid())
+  propertyId       String
+  userId           String
+  tenantId         String?
+  firstName        String            @db.VarChar(100)
+  lastName         String            @db.VarChar(100)
+  email            String            @db.VarChar(255)
+  phone            String            @db.VarChar(20)
+  gender           Gender
+  nationalIdNumber String            @db.VarChar(50)
+  message          String?
+  income           Int?
+  occupation       String?           @db.VarChar(150)
+  attachments      String[]          @default([])
+  status           ApplicationStatus @default(PENDING)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, propertyId, status])
   @@map("applications")
 }
 
@@ -542,9 +554,9 @@ model Commission {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  mandate  Mandate?  @relation(fields: [mandateId], references: [id])
-  contract Contract  @relation(fields: [contractId], references: [id])
-  agency   Agency    @relation(fields: [agencyId], references: [id])
+  mandate  Mandate? @relation(fields: [mandateId], references: [id])
+  contract Contract @relation(fields: [contractId], references: [id])
+  agency   Agency   @relation(fields: [agencyId], references: [id])
 
   @@index([agencyId, status])
   @@index([contractId])
@@ -561,7 +573,7 @@ model AdminAuditLog {
   result       String      @db.VarChar(50)
   createdAt    DateTime    @default(now())
 
-  admin  User  @relation("AdminAuditAdmin",  fields: [adminId],      references: [id])
+  admin  User  @relation("AdminAuditAdmin", fields: [adminId], references: [id])
   target User? @relation("AdminAuditTarget", fields: [targetUserId], references: [id])
 
   @@index([adminId])

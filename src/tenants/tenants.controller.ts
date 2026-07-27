@@ -6,23 +6,14 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { SearchRequestDto } from '../common/dto/pagination.dto';
-import { TurnstileGuard } from '../common/guards/turnstile.guard.js';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
-import {
-  CreateApplicationDto,
-  CreateTenantDto,
-  UpdateApplicationDto,
-  UpdateTenantDto,
-} from './dto/tenant.dto';
+import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 import { TenantsService } from './tenants.service';
 
 @ApiTags('Tenants')
@@ -40,7 +31,12 @@ export class TenantsController {
     const { page = 1, limit = 20, search } = query;
     const baseWhere = user.role !== Role.ADMIN ? { ownerId: user.id } : {};
     return this.service.findWithPagination(
-      { searchKey: search, pageNumber: page - 1, pageSize: limit, sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }] },
+      {
+        searchKey: search,
+        pageNumber: page - 1,
+        pageSize: limit,
+        sortClauses: [{ fieldName: 'createdAt', direction: 'DESC' }],
+      },
       baseWhere,
     );
   }
@@ -48,14 +44,19 @@ export class TenantsController {
   @Post('search')
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: 'Recherche paginée de locataires' })
-  findWithPagination(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
+  findWithPagination(
+    @CurrentUser() user: AuthUser,
+    @Body() body: SearchRequestDto,
+  ) {
     const baseWhere = user.role !== Role.ADMIN ? { ownerId: user.id } : {};
     return this.service.findWithPagination(body, baseWhere);
   }
 
   @Post('search/all')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Liste complète des locataires sans pagination (admin)' })
+  @ApiOperation({
+    summary: 'Liste complète des locataires sans pagination (admin)',
+  })
   findAll(@Body() body: SearchRequestDto) {
     return this.service.findAll(body);
   }
@@ -90,38 +91,5 @@ export class TenantsController {
     @Body() dto: UpdateTenantDto,
   ) {
     return this.service.updateTenant(id, user.id, user.role, dto);
-  }
-}
-
-@ApiTags('Properties')
-@Controller('properties')
-export class ApplicationsController {
-  constructor(private readonly service: TenantsService) {}
-
-  @Public()
-  @UseGuards(TurnstileGuard)
-  @Throttle({ default: { limit: 5, ttl: 3600000 } })
-  @Post(':slug/applications')
-  @ApiOperation({ summary: 'Déposer une candidature' })
-  create(@Param('slug') slug: string, @Body() dto: CreateApplicationDto) {
-    return this.service.createApplication(slug, dto);
-  }
-
-  @Get(':id/applications')
-  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: "Liste des candidatures d'un bien" })
-  list(@Param('id') id: string) {
-    return this.service.listApplications(id);
-  }
-
-  @Patch(':id/applications/:applicationId')
-  @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
-  @ApiOperation({ summary: "Mettre à jour le statut d'une candidature" })
-  updateStatus(
-    @Param('id') id: string,
-    @Param('applicationId') applicationId: string,
-    @Body() dto: UpdateApplicationDto,
-  ) {
-    return this.service.updateApplication(id, applicationId, dto);
   }
 }
