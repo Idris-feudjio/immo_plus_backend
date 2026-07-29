@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { Agency, AgencyStatus } from '@prisma/client';
-import { BaseRepository, PrismaModelDelegate } from '../common/abstractions/base.repository';
+import {
+  BaseRepository,
+  PrismaModelDelegate,
+} from '../common/abstractions/base.repository';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
-import type { QueryField, ISearchRequest } from '../common/interfaces/search-request.interface';
+import type {
+  QueryField,
+  ISearchRequest,
+} from '../common/interfaces/search-request.interface';
 import { buildMeta } from '../common/utils/pagination.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,15 +22,23 @@ export type AgencyCreateData = {
 };
 
 const AGENCY_QUERY_FIELDS: QueryField[] = [
-  { filterKey: 'status',    prismaField: 'status',    filterable: true, filterType: 'exact' },
-  { filterKey: 'name',      prismaField: 'name',      searchable: true },
+  {
+    filterKey: 'status',
+    prismaField: 'status',
+    filterable: true,
+    filterType: 'exact',
+  },
+  { filterKey: 'name', prismaField: 'name', searchable: true },
   { filterKey: 'createdAt', prismaField: 'createdAt', sortable: true },
 ];
 
 @Injectable()
 export class AgencyRepository extends BaseRepository<Agency, AgencyCreateData> {
   constructor(private readonly prisma: PrismaService) {
-    super(prisma.agency as unknown as PrismaModelDelegate<Agency>, AGENCY_QUERY_FIELDS);
+    super(
+      prisma.agency as unknown as PrismaModelDelegate<Agency>,
+      AGENCY_QUERY_FIELDS,
+    );
   }
 
   override async findWithPagination(
@@ -49,6 +63,9 @@ export class AgencyRepository extends BaseRepository<Agency, AgencyCreateData> {
       this.prisma.agency.count({ where }),
     ]);
 
-    return { data: data as unknown as Agency[], meta: buildMeta(total, pageNumber, pageSize) };
+    return {
+      data: data as unknown as Agency[],
+      meta: buildMeta(total, pageNumber, pageSize),
+    };
   }
 }

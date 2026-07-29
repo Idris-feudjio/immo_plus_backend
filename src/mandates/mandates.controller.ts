@@ -45,9 +45,11 @@ export class MandatesController {
   @ApiOperation({ summary: 'List mandates (filtered by role)' })
   search(@CurrentUser() user: AuthUser, @Body() body: SearchRequestDto) {
     const baseWhere =
-      user.role === Role.ADMIN ? {} :
-      user.role === Role.MANAGER ? { managerId: user.id } :
-      { property: { ownerId: user.id } };
+      user.role === Role.ADMIN
+        ? {}
+        : user.role === Role.MANAGER
+          ? { managerId: user.id }
+          : { property: { ownerId: user.id } };
     return this.service.findWithPagination(body, baseWhere);
   }
 }

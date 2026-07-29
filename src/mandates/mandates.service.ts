@@ -21,7 +21,11 @@ export class MandatesService extends BaseService<Mandate, MandateCreateData> {
     super(repository);
   }
 
-  async createMandate(userId: string, role: string, dto: CreateMandateDto): Promise<Mandate> {
+  async createMandate(
+    userId: string,
+    role: string,
+    dto: CreateMandateDto,
+  ): Promise<Mandate> {
     const property = await this.prisma.property.findUnique({
       where: { id: dto.propertyId },
       select: { id: true, ownerId: true, title: true },
@@ -38,7 +42,11 @@ export class MandatesService extends BaseService<Mandate, MandateCreateData> {
     });
     if (!membership) throw new ForbiddenException('MANAGER_NOT_IN_AGENCY');
 
-    const duplicate = await this.repository.findDuplicate(dto.propertyId, dto.agencyId, dto.managerId);
+    const duplicate = await this.repository.findDuplicate(
+      dto.propertyId,
+      dto.agencyId,
+      dto.managerId,
+    );
     if (duplicate) throw new ConflictException('MANDATE_ALREADY_EXISTS');
 
     // Create mandate
@@ -50,7 +58,8 @@ export class MandatesService extends BaseService<Mandate, MandateCreateData> {
       startDate: new Date(dto.startDate),
       endDate: dto.endDate ? new Date(dto.endDate) : undefined,
       commissionType: dto.commissionType,
-      commissionValue: dto.commissionValue !== undefined ? dto.commissionValue : undefined,
+      commissionValue:
+        dto.commissionValue !== undefined ? dto.commissionValue : undefined,
       description: dto.description,
     });
 
@@ -69,7 +78,12 @@ export class MandatesService extends BaseService<Mandate, MandateCreateData> {
     return mandate;
   }
 
-  async terminate(id: string, userId: string, role: string, _dto: TerminateMandateDto): Promise<Mandate> {
+  async terminate(
+    id: string,
+    userId: string,
+    role: string,
+    _dto: TerminateMandateDto,
+  ): Promise<Mandate> {
     const mandate = await this.repository.findById(id);
     if (!mandate) throw new NotFoundException('MANDATE_NOT_FOUND');
 
@@ -82,11 +96,17 @@ export class MandatesService extends BaseService<Mandate, MandateCreateData> {
       throw new ForbiddenException('NOT_PROPERTY_OWNER');
     }
 
-    if (mandate.status === MandateStatus.TERMINATED || mandate.status === MandateStatus.EXPIRED) {
+    if (
+      mandate.status === MandateStatus.TERMINATED ||
+      mandate.status === MandateStatus.EXPIRED
+    ) {
       throw new ConflictException('MANDATE_ALREADY_CLOSED');
     }
 
-    const updated = await this.repository.updateStatus(id, MandateStatus.TERMINATED);
+    const updated = await this.repository.updateStatus(
+      id,
+      MandateStatus.TERMINATED,
+    );
 
     await this.prisma.property.updateMany({
       where: { id: mandate.propertyId, managerId: mandate.managerId },
@@ -102,6 +122,4 @@ export class MandatesService extends BaseService<Mandate, MandateCreateData> {
 
     return updated;
   }
-
 }
-

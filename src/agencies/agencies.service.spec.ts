@@ -4,12 +4,22 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AgencyMemberRole, AgencyStatus, MandateStatus, Prisma, Role } from '@prisma/client';
+import {
+  AgencyMemberRole,
+  AgencyStatus,
+  MandateStatus,
+  Prisma,
+  Role,
+} from '@prisma/client';
 import { AgenciesService } from './agencies.service';
 
 // ─── Mock factories ───────────────────────────────────────────────────────────
 
 function mockPrisma() {
+  const tx = {
+    agency: { create: jest.fn() },
+    agencyMember: { create: jest.fn() },
+  };
   return {
     agency: {
       findUnique: jest.fn(),
@@ -25,6 +35,8 @@ function mockPrisma() {
     mandate: {
       count: jest.fn().mockResolvedValue(0),
     },
+    $transaction: jest.fn((callback: (tx: unknown) => unknown) => callback(tx)),
+    _tx: tx,
   };
 }
 
@@ -43,6 +55,10 @@ function mockCache() {
     set: jest.fn().mockResolvedValue(undefined),
     del: jest.fn().mockResolvedValue(undefined),
   };
+}
+
+function mockMandateRepo() {
+  return { findActiveByAgency: jest.fn().mockResolvedValue([]) };
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -67,6 +83,31 @@ const MEMBER_STUB = {
   joinedAt: new Date('2026-01-01'),
 };
 
+const MANAGER_USER = {
+  id: 'user-manager-1',
+  email: 'manager@test.cm',
+  role: Role.MANAGER,
+  firstName: 'Sara',
+  lastName: 'Eba',
+  isActive: true,
+  avatarUrl: null,
+};
+const ADMIN_USER = {
+  id: 'admin-1',
+  email: 'admin@test.cm',
+  role: Role.ADMIN,
+  firstName: 'Admin',
+  lastName: 'A',
+  isActive: true,
+  avatarUrl: null,
+};
+
+const CREATE_AGENCY_DTO = {
+  name: 'Immo Pro',
+  email: 'agency@immo.cm',
+  phone: '+237600000000',
+};
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('AgenciesService', () => {
@@ -74,30 +115,123 @@ describe('AgenciesService', () => {
   let prisma: ReturnType<typeof mockPrisma>;
   let repository: ReturnType<typeof mockRepository>;
   let cache: ReturnType<typeof mockCache>;
+  let mandateRepo: ReturnType<typeof mockMandateRepo>;
 
   beforeEach(() => {
     prisma = mockPrisma();
     repository = mockRepository();
     cache = mockCache();
-    service = new AgenciesService(repository as never, prisma as never, cache as never);
+    mandateRepo = mockMandateRepo();
+    service = new AgenciesService(
+      repository as never,
+      prisma as never,
+      cache as never,
+      mandateRepo as never,
+    );
   });
 
   // ── createAgency ───────────────────────────────────────────────────────────
 
   describe('createAgency', () => {
-    it('creates agency with ACTIVE status', async () => {
-      repository.create.mockResolvedValue(AGENCY_STUB);
+    beforeEach(() => {
+      prisma.agencyMember.findFirst.mockResolvedValue(null);
+      prisma._tx.agency.create.mockResolvedValue(AGENCY_STUB);
+      prisma._tx.agencyMember.create.mockResolvedValue(MEMBER_STUB);
+    });
 
-      const result = await service.createAgency({
-        name: 'Immo Pro',
-        email: 'agency@immo.cm',
-        phone: '+237600000000',
+    it('creates agency with ACTIVE status', async () => {
+      const result = await service.createAgency(
+        MANAGER_USER,
+        CREATE_AGENCY_DTO,
+      );
+
+      expect(prisma._tx.agency.create).toHaveBeenCalledWith({
+        data: {
+          name: 'Immo Pro',
+          email: 'agency@immo.cm',
+          phone: '+237600000000',
+          address: undefined,
+          rccm: undefined,
+          status: AgencyStatus.ACTIVE,
+        },
+      });
+      expect(result).toEqual(AGENCY_STUB);
+    });
+
+    it('creates an ADMIN AgencyMember row for the creating MANAGER, atomically', async () => {
+      await service.createAgency(MANAGER_USER, CREATE_AGENCY_DTO);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma._tx.agencyMember.create).toHaveBeenCalledWith({
+        data: {
+          agencyId: 'agency-1',
+          userId: 'user-manager-1',
+          role: AgencyMemberRole.ADMIN,
+        },
+      });
+    });
+
+    it('does NOT create a membership when the creator is ADMIN', async () => {
+      await service.createAgency(ADMIN_USER, CREATE_AGENCY_DTO);
+
+      expect(prisma._tx.agencyMember.create).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException (409) when the MANAGER already belongs to an agency', async () => {
+      prisma.agencyMember.findFirst.mockResolvedValue({
+        id: 'existing-member',
       });
 
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: AgencyStatus.ACTIVE }),
+      await expect(
+        service.createAgency(MANAGER_USER as never, CREATE_AGENCY_DTO),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('does not check membership for an ADMIN creator', async () => {
+      await service.createAgency(ADMIN_USER, CREATE_AGENCY_DTO);
+
+      expect(prisma.agencyMember.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the agency email already exists (P2002)', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        { code: 'P2002', clientVersion: '5.0.0' },
       );
-      expect(result).toEqual(AGENCY_STUB);
+      prisma._tx.agency.create.mockRejectedValue(prismaError);
+
+      await expect(
+        service.createAgency(MANAGER_USER as never, CREATE_AGENCY_DTO),
+      ).rejects.toThrow('AGENCY_EMAIL_ALREADY_EXISTS');
+    });
+  });
+
+  // ── getMyAgency ────────────────────────────────────────────────────────────
+
+  describe('getMyAgency', () => {
+    it('returns the agency and its active mandates', async () => {
+      prisma.agencyMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+        agencyId: 'agency-1',
+        agency: AGENCY_STUB,
+      });
+      const mandates = [{ id: 'mandate-1', status: MandateStatus.ACTIVE }];
+      mandateRepo.findActiveByAgency.mockResolvedValue(mandates);
+
+      const result = await service.getMyAgency('user-manager-1');
+
+      expect(result).toEqual({ agency: AGENCY_STUB, mandates });
+      expect(mandateRepo.findActiveByAgency).toHaveBeenCalledWith('agency-1');
+    });
+
+    it('throws NotFoundException when the user has no agency', async () => {
+      prisma.agencyMember.findFirst.mockResolvedValue(null);
+
+      await expect(service.getMyAgency('user-manager-1')).rejects.toThrow(
+        'NO_AGENCY',
+      );
+      expect(mandateRepo.findActiveByAgency).not.toHaveBeenCalled();
     });
   });
 
@@ -112,14 +246,18 @@ describe('AgenciesService', () => {
 
       const result = await service.suspend('agency-1');
 
-      expect(repository.update).toHaveBeenCalledWith('agency-1', { status: AgencyStatus.SUSPENDED });
+      expect(repository.update).toHaveBeenCalledWith('agency-1', {
+        status: AgencyStatus.SUSPENDED,
+      });
       expect(result.status).toBe(AgencyStatus.SUSPENDED);
     });
 
     it('throws NotFoundException when agency does not exist', async () => {
       prisma.agency.findUnique.mockResolvedValue(null);
 
-      await expect(service.suspend('unknown')).rejects.toThrow(NotFoundException);
+      await expect(service.suspend('unknown')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -137,7 +275,10 @@ describe('AgenciesService', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
-      expect(repository.findWithPagination).toHaveBeenCalledWith({ pageNumber: 0, pageSize: 10 }, {});
+      expect(repository.findWithPagination).toHaveBeenCalledWith(
+        { pageNumber: 0, pageSize: 10 },
+        {},
+      );
     });
 
     it('delegates to repository with empty baseWhere', async () => {
@@ -157,14 +298,22 @@ describe('AgenciesService', () => {
   describe('addMember', () => {
     beforeEach(() => {
       prisma.agency.findUnique.mockResolvedValue({ id: 'agency-1' });
-      prisma.user.findUnique.mockResolvedValue({ id: 'user-manager-1', role: Role.MANAGER });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-manager-1',
+        role: Role.MANAGER,
+      });
       prisma.agencyMember.create.mockResolvedValue(MEMBER_STUB);
     });
 
     it('allows ADMIN to add member without membership check', async () => {
-      const result = await service.addMember('agency-1', 'admin-user-1', Role.ADMIN, {
-        userId: 'user-manager-1',
-      });
+      const result = await service.addMember(
+        'agency-1',
+        'admin-user-1',
+        Role.ADMIN,
+        {
+          userId: 'user-manager-1',
+        },
+      );
 
       expect(prisma.agencyMember.findFirst).not.toHaveBeenCalled();
       expect(result).toEqual(MEMBER_STUB);
@@ -173,9 +322,14 @@ describe('AgenciesService', () => {
     it('allows agency ADMIN member to add new member', async () => {
       prisma.agencyMember.findFirst.mockResolvedValue({ id: 'admin-member-1' });
 
-      const result = await service.addMember('agency-1', 'agency-admin-user', Role.OWNER, {
-        userId: 'user-manager-1',
-      });
+      const result = await service.addMember(
+        'agency-1',
+        'agency-admin-user',
+        Role.OWNER,
+        {
+          userId: 'user-manager-1',
+        },
+      );
 
       expect(result).toEqual(MEMBER_STUB);
     });
@@ -184,15 +338,22 @@ describe('AgenciesService', () => {
       prisma.agencyMember.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.addMember('agency-1', 'random-user', Role.OWNER, { userId: 'user-manager-1' }),
+        service.addMember('agency-1', 'random-user', Role.OWNER, {
+          userId: 'user-manager-1',
+        }),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('throws UnprocessableEntityException when user is not MANAGER', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'user-owner-1', role: Role.OWNER });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-owner-1',
+        role: Role.OWNER,
+      });
 
       await expect(
-        service.addMember('agency-1', 'admin-user-1', Role.ADMIN, { userId: 'user-owner-1' }),
+        service.addMember('agency-1', 'admin-user-1', Role.ADMIN, {
+          userId: 'user-owner-1',
+        }),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -200,19 +361,26 @@ describe('AgenciesService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.addMember('agency-1', 'admin-user-1', Role.ADMIN, { userId: 'unknown-user' }),
+        service.addMember('agency-1', 'admin-user-1', Role.ADMIN, {
+          userId: 'unknown-user',
+        }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when user already in agency (P2002)', async () => {
-      const prismaError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002',
-        clientVersion: '5.0.0',
-      });
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '5.0.0',
+        },
+      );
       prisma.agencyMember.create.mockRejectedValue(prismaError);
 
       await expect(
-        service.addMember('agency-1', 'admin-user-1', Role.ADMIN, { userId: 'user-manager-1' }),
+        service.addMember('agency-1', 'admin-user-1', Role.ADMIN, {
+          userId: 'user-manager-1',
+        }),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -220,7 +388,9 @@ describe('AgenciesService', () => {
       prisma.agency.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.addMember('unknown-agency', 'admin-user-1', Role.ADMIN, { userId: 'user-manager-1' }),
+        service.addMember('unknown-agency', 'admin-user-1', Role.ADMIN, {
+          userId: 'user-manager-1',
+        }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -234,13 +404,17 @@ describe('AgenciesService', () => {
 
       await service.removeMember('agency-1', 'member-1');
 
-      expect(prisma.agencyMember.delete).toHaveBeenCalledWith({ where: { id: 'member-1' } });
+      expect(prisma.agencyMember.delete).toHaveBeenCalledWith({
+        where: { id: 'member-1' },
+      });
     });
 
     it('throws NotFoundException when member not found in agency', async () => {
       prisma.agencyMember.findFirst.mockResolvedValue(null);
 
-      await expect(service.removeMember('agency-1', 'nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.removeMember('agency-1', 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -261,7 +435,11 @@ describe('AgenciesService', () => {
 
       expect(result.managedPropertiesCount).toBe(5);
       expect(result.id).toBe('agency-1');
-      expect(cache.set).toHaveBeenCalledWith('agency:agency-1:profile', expect.any(Object), 1800);
+      expect(cache.set).toHaveBeenCalledWith(
+        'agency:agency-1:profile',
+        expect.any(Object),
+        1800,
+      );
     });
 
     it('returns cached profile without hitting DB', async () => {
@@ -284,7 +462,9 @@ describe('AgenciesService', () => {
     it('throws NotFoundException when agency not found', async () => {
       prisma.agency.findUnique.mockResolvedValue(null);
 
-      await expect(service.getPublicProfile('unknown')).rejects.toThrow(NotFoundException);
+      await expect(service.getPublicProfile('unknown')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('counts only ACTIVE mandates with published properties', async () => {
@@ -301,11 +481,12 @@ describe('AgenciesService', () => {
 
       expect(prisma.mandate.count).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
+          where: {
             agencyId: 'agency-1',
             status: MandateStatus.ACTIVE,
+            deletedAt: null,
             property: { isPublished: true },
-          }),
+          },
         }),
       );
     });

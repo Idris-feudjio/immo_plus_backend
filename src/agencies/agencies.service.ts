@@ -5,12 +5,22 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Agency, AgencyMember, AgencyMemberRole, AgencyStatus, MandateStatus, Prisma, Role } from '@prisma/client';
+import {
+  Agency,
+  AgencyMember,
+  AgencyMemberRole,
+  AgencyStatus,
+  MandateStatus,
+  Prisma,
+  Role,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { BaseService } from '../common/abstractions/base.service';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import type { PaginatedResult } from '../common/interfaces/paginated-result.interface';
 import type { ISearchRequest } from '../common/interfaces/search-request.interface';
+import { MandateRepository } from '../mandates/mandate.repository';
 import type { AddAgencyMemberDto, CreateAgencyDto } from './dto/agency.dto';
 import type { PublicAgencyProfile } from './dto/agency.dto';
 import { AgencyCreateData, AgencyRepository } from './agency.repository';
@@ -21,23 +31,95 @@ export class AgenciesService extends BaseService<Agency, AgencyCreateData> {
     protected override readonly repository: AgencyRepository,
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly mandateRepo: MandateRepository,
   ) {
     super(repository);
   }
 
-  async createAgency(dto: CreateAgencyDto): Promise<Agency> {
-    return this.repository.create({
-      name: dto.name,
-      email: dto.email,
-      phone: dto.phone,
-      address: dto.address,
-      rccm: dto.rccm,
-      status: AgencyStatus.ACTIVE,
+  async createAgency(user: AuthUser, dto: CreateAgencyDto): Promise<Agency> {
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          if (user.role === Role.MANAGER) {
+            const existingMembership = await tx.agencyMember.findFirst({
+              where: { userId: user.id },
+              select: { id: true },
+            });
+            if (existingMembership) {
+              throw new ConflictException({
+                error: 'AGENCY_ALREADY_EXISTS',
+                message: 'Une agence avec ce nom existe déjà',
+              });
+            }
+          }
+
+          const agency = await tx.agency.create({
+            data: {
+              name: dto.name,
+              email: dto.email,
+              phone: dto.phone,
+              address: dto.address,
+              rccm: dto.rccm,
+              status: AgencyStatus.ACTIVE,
+            },
+          });
+
+          if (user.role === Role.MANAGER) {
+            await tx.agencyMember.create({
+              data: {
+                agencyId: agency.id,
+                userId: user.id,
+                role: AgencyMemberRole.ADMIN,
+              },
+            });
+          }
+
+          return agency;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (err: unknown) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const target = Array.isArray(err.meta?.target)
+          ? (err.meta.target as string[])
+          : [];
+        if (target.includes('userId')) {
+          throw new ConflictException({
+            error: 'AGENCY_ALREADY_EXISTS',
+            message: 'Une agence avec ce nom existe déjà',
+          });
+        }
+        throw new ConflictException({
+          error: 'AGENCY_EMAIL_ALREADY_EXISTS',
+          message: 'Cet email est déjà utilisé par une autre agence',
+        });
+      }
+      throw err;
+    }
+  }
+
+  async getMyAgency(userId: string) {
+    const membership = await this.prisma.agencyMember.findFirst({
+      where: { userId },
+      include: { agency: true },
     });
+    if (!membership) throw new NotFoundException('NO_AGENCY');
+
+    const mandates = await this.mandateRepo.findActiveByAgency(
+      membership.agencyId,
+    );
+
+    return { agency: membership.agency, mandates };
   }
 
   async suspend(id: string): Promise<Agency> {
-    const existing = await this.prisma.agency.findUnique({ where: { id }, select: { id: true } });
+    const existing = await this.prisma.agency.findUnique({
+      where: { id },
+      select: { id: true },
+    });
     if (!existing) throw new NotFoundException('AGENCY_NOT_FOUND');
     return this.update(id, { status: AgencyStatus.SUSPENDED });
   }
@@ -52,7 +134,10 @@ export class AgenciesService extends BaseService<Agency, AgencyCreateData> {
     requesterRole: string,
     dto: AddAgencyMemberDto,
   ): Promise<AgencyMember> {
-    const agency = await this.prisma.agency.findUnique({ where: { id: agencyId }, select: { id: true } });
+    const agency = await this.prisma.agency.findUnique({
+      where: { id: agencyId },
+      select: { id: true },
+    });
     if (!agency) throw new NotFoundException('AGENCY_NOT_FOUND');
 
     if (requesterRole !== Role.ADMIN) {
@@ -60,12 +145,17 @@ export class AgenciesService extends BaseService<Agency, AgencyCreateData> {
         where: { agencyId, userId: requesterId, role: AgencyMemberRole.ADMIN },
         select: { id: true },
       });
-      if (!requesterMembership) throw new ForbiddenException('INSUFFICIENT_PERMISSIONS');
+      if (!requesterMembership)
+        throw new ForbiddenException('INSUFFICIENT_PERMISSIONS');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: dto.userId }, select: { id: true, role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+      select: { id: true, role: true },
+    });
     if (!user) throw new NotFoundException('USER_NOT_FOUND');
-    if (user.role !== Role.MANAGER) throw new UnprocessableEntityException('USER_NOT_MANAGER');
+    if (user.role !== Role.MANAGER)
+      throw new UnprocessableEntityException('USER_NOT_MANAGER');
 
     try {
       return await this.prisma.agencyMember.create({

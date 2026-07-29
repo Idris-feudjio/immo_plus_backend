@@ -1,4 +1,13 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { AgencyMemberRole } from '@prisma/client';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export interface PublicAgencyProfile {
   id: string;
@@ -10,10 +19,32 @@ export interface PublicAgencyProfile {
 }
 
 export class CreateAgencyDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   name!: string;
+
+  @ApiProperty()
+  @IsEmail()
   email!: string;
+
+  @ApiProperty()
+  @IsString()
+  @Matches(/^\+237[0-9]{8,9}$/, {
+    message: 'Le téléphone doit commencer par +237 et être valide.',
+  })
   phone!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
   rccm?: string;
 }
 

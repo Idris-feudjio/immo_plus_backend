@@ -25,11 +25,22 @@ export class AgenciesController {
   constructor(private readonly service: AgenciesService) {}
 
   @Post()
-  @Roles(Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new agency (ADMIN only)' })
-  create(@Body() dto: CreateAgencyDto) {
-    return this.service.createAgency(dto);
+  @ApiOperation({
+    summary: 'Create a new agency (self-service for MANAGER, or ADMIN)',
+  })
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateAgencyDto) {
+    return this.service.createAgency(user, dto);
+  }
+
+  @Get('me')
+  @Roles(Role.MANAGER)
+  @ApiOperation({
+    summary: 'Mon agence (gestionnaire) — infos + mandats actifs',
+  })
+  getMyAgency(@CurrentUser() user: AuthUser) {
+    return this.service.getMyAgency(user.id);
   }
 
   @Patch(':id/suspend')
