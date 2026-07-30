@@ -40,6 +40,22 @@ export class MandatesController {
     return this.service.terminate(id, user.id, user.role, dto);
   }
 
+  @Post(':id/accept')
+  @Roles(Role.MANAGER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Accept a mandate invitation' })
+  accept(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.service.accept(id, user.id, user.role);
+  }
+
+  @Post(':id/refuse')
+  @Roles(Role.MANAGER, Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refuse a mandate invitation' })
+  refuse(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.service.refuse(id, user.id, user.role);
+  }
+
   @Post('search')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List mandates (filtered by role)' })

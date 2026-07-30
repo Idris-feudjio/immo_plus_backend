@@ -86,7 +86,14 @@ export class MandateRepository extends BaseRepository<
         skip: pageNumber * pageSize,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: { property: true, agency: true },
+        include: {
+          property: {
+            include: {
+              owner: { select: { firstName: true, lastName: true } },
+            },
+          },
+          agency: true,
+        },
       }),
       this.prisma.mandate.count({ where }),
     ]);
@@ -140,7 +147,7 @@ export class MandateRepository extends BaseRepository<
         propertyId,
         agencyId,
         managerId,
-        status: MandateStatus.ACTIVE,
+        status: { in: [MandateStatus.PENDING, MandateStatus.ACTIVE] },
         deletedAt: null,
       },
       select: { id: true },

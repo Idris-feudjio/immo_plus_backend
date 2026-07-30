@@ -27,6 +27,7 @@ export class CreateAgencyDto {
 
   @ApiProperty()
   @IsEmail()
+  @MaxLength(255)
   email!: string;
 
   @ApiProperty()
@@ -34,6 +35,7 @@ export class CreateAgencyDto {
   @Matches(/^\+237[0-9]{8,9}$/, {
     message: 'Le téléphone doit commencer par +237 et être valide.',
   })
+  @MaxLength(20)
   phone!: string;
 
   @ApiPropertyOptional()

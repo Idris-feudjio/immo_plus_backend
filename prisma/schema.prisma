@@ -96,9 +96,11 @@ enum AgencyMemberRole {
 }
 
 enum MandateStatus {
+  PENDING
   ACTIVE
   TERMINATED
   EXPIRED
+  REFUSED
 }
 
 enum CommissionType {

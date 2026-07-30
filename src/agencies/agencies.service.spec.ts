@@ -18,7 +18,7 @@ import { AgenciesService } from './agencies.service';
 function mockPrisma() {
   const tx = {
     agency: { create: jest.fn() },
-    agencyMember: { create: jest.fn() },
+    agencyMember: { findFirst: jest.fn(), create: jest.fn() },
   };
   return {
     agency: {
@@ -134,7 +134,7 @@ describe('AgenciesService', () => {
 
   describe('createAgency', () => {
     beforeEach(() => {
-      prisma.agencyMember.findFirst.mockResolvedValue(null);
+      prisma._tx.agencyMember.findFirst.mockResolvedValue(null);
       prisma._tx.agency.create.mockResolvedValue(AGENCY_STUB);
       prisma._tx.agencyMember.create.mockResolvedValue(MEMBER_STUB);
     });
@@ -177,33 +177,58 @@ describe('AgenciesService', () => {
       expect(prisma._tx.agencyMember.create).not.toHaveBeenCalled();
     });
 
-    it('throws ConflictException (409) when the MANAGER already belongs to an agency', async () => {
-      prisma.agencyMember.findFirst.mockResolvedValue({
+    it('throws ConflictException (409) when the MANAGER already belongs to an agency (checked inside the transaction)', async () => {
+      prisma._tx.agencyMember.findFirst.mockResolvedValue({
         id: 'existing-member',
       });
 
       await expect(
         service.createAgency(MANAGER_USER as never, CREATE_AGENCY_DTO),
       ).rejects.toThrow(ConflictException);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma._tx.agency.create).not.toHaveBeenCalled();
     });
 
     it('does not check membership for an ADMIN creator', async () => {
       await service.createAgency(ADMIN_USER, CREATE_AGENCY_DTO);
 
-      expect(prisma.agencyMember.findFirst).not.toHaveBeenCalled();
+      expect(prisma._tx.agencyMember.findFirst).not.toHaveBeenCalled();
     });
 
-    it('throws ConflictException when the agency email already exists (P2002)', async () => {
+    it('uses a Serializable transaction to close the anti-doublon race', async () => {
+      await service.createAgency(MANAGER_USER, CREATE_AGENCY_DTO);
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ isolationLevel: 'Serializable' }),
+      );
+    });
+
+    it('throws ConflictException("AGENCY_EMAIL_ALREADY_EXISTS") when the P2002 conflict targets the agency email', async () => {
       const prismaError = new Prisma.PrismaClientKnownRequestError(
         'Unique constraint failed',
-        { code: 'P2002', clientVersion: '5.0.0' },
+        { code: 'P2002', clientVersion: '5.0.0', meta: { target: ['email'] } },
       );
       prisma._tx.agency.create.mockRejectedValue(prismaError);
 
       await expect(
         service.createAgency(MANAGER_USER as never, CREATE_AGENCY_DTO),
-      ).rejects.toThrow('AGENCY_EMAIL_ALREADY_EXISTS');
+      ).rejects.toThrow('Cet email est déjà utilisé par une autre agence');
+    });
+
+    it('throws ConflictException("AGENCY_ALREADY_EXISTS") when the P2002 conflict targets AgencyMember.userId (race)', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: '5.0.0',
+          meta: { target: ['userId'] },
+        },
+      );
+      prisma._tx.agencyMember.create.mockRejectedValue(prismaError);
+
+      await expect(
+        service.createAgency(MANAGER_USER as never, CREATE_AGENCY_DTO),
+      ).rejects.toThrow('Une agence avec ce nom existe déjà');
     });
   });
 
