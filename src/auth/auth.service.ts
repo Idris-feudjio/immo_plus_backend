@@ -13,7 +13,14 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { randomInt } from 'crypto';
-import { AuditAction, Prisma, Role } from '@prisma/client';
+import { addDays } from 'date-fns';
+import {
+  AuditAction,
+  PlanName,
+  Prisma,
+  Role,
+  SubscriptionStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from '../notifications/email-queue.service.js';
 import { CacheService } from '../cache/cache.service';
@@ -39,13 +46,20 @@ export class AuthService {
 
     const email = dto.email.toLowerCase();
 
-    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
+    const existingEmail = await this.prisma.user.findUnique({
+      where: { email },
+    });
     if (existingEmail) {
-      throw new ConflictException({ error: 'EMAIL_ALREADY_EXISTS', message: 'Email déjà utilisé.' });
+      throw new ConflictException({
+        error: 'EMAIL_ALREADY_EXISTS',
+        message: 'Email déjà utilisé.',
+      });
     }
 
     if (dto.phone) {
-      const existingPhone = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+      const existingPhone = await this.prisma.user.findUnique({
+        where: { phone: dto.phone },
+      });
       if (existingPhone) {
         throw new ConflictException('Numéro de téléphone déjà utilisé.');
       }
@@ -54,8 +68,8 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const allowedRoles = ['OWNER', 'TENANT'] as const;
-    if (!allowedRoles.includes(dto.role as typeof allowedRoles[number])) {
-      throw new BadRequestException('Rôle non autorisé à l\'inscription.');
+    if (!allowedRoles.includes(dto.role)) {
+      throw new BadRequestException("Rôle non autorisé à l'inscription.");
     }
 
     const user = await this.prisma.user.create({
@@ -69,6 +83,10 @@ export class AuthService {
       },
       select: { id: true, firstName: true, email: true },
     });
+
+    if (dto.role === Role.OWNER) {
+      await this.activateFreeTrial({ ownerId: user.id });
+    }
 
     const otp = this.generateOtp();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -91,7 +109,9 @@ export class AuthService {
   }
 
   async verifyEmail(dto: VerifyEmailDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
     if (!user) throw new NotFoundException('Utilisateur introuvable.');
 
     if (user.emailVerified) {
@@ -103,7 +123,10 @@ export class AuthService {
     // Pre-check: reject immediately if 3+ failed attempts already recorded
     const currentAttempts = await this.cache.get<number>(attemptsKey);
     if (currentAttempts !== null && currentAttempts >= 3) {
-      throw new BadRequestException({ error: 'OTP_MAX_ATTEMPTS', message: 'Trop de tentatives. Demandez un nouveau code.' });
+      throw new BadRequestException({
+        error: 'OTP_MAX_ATTEMPTS',
+        message: 'Trop de tentatives. Demandez un nouveau code.',
+      });
     }
 
     // Find OTP by code WITHOUT expiry filter — allows distinguishing expired vs wrong code
@@ -120,13 +143,22 @@ export class AuthService {
           where: { userId: user.id, usedAt: null },
           data: { usedAt: new Date() },
         });
-        throw new BadRequestException({ error: 'OTP_MAX_ATTEMPTS', message: 'Trop de tentatives. Demandez un nouveau code.' });
+        throw new BadRequestException({
+          error: 'OTP_MAX_ATTEMPTS',
+          message: 'Trop de tentatives. Demandez un nouveau code.',
+        });
       }
-      throw new BadRequestException({ error: 'OTP_INVALID', message: 'Code OTP incorrect.' });
+      throw new BadRequestException({
+        error: 'OTP_INVALID',
+        message: 'Code OTP incorrect.',
+      });
     }
 
     if (otpRecord.expiresAt < new Date()) {
-      throw new BadRequestException({ error: 'OTP_EXPIRED', message: 'Code OTP expiré. Demandez un nouveau code.' });
+      throw new BadRequestException({
+        error: 'OTP_EXPIRED',
+        message: 'Code OTP expiré. Demandez un nouveau code.',
+      });
     }
 
     await this.cache.del(attemptsKey);
@@ -137,7 +169,10 @@ export class AuthService {
     });
 
     if (!user.isActive) {
-      throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+      throw new ForbiddenException({
+        error: 'ACCOUNT_DISABLED',
+        message: 'Votre compte a été désactivé.',
+      });
     }
 
     await this.prisma.user.update({
@@ -158,7 +193,10 @@ export class AuthService {
     });
 
     if (recentAttempts >= 3) {
-      throw new BadRequestException({ error: 'OTP_RESEND_LIMIT', message: 'Trop de tentatives. Réessayez dans 10 minutes.' });
+      throw new BadRequestException({
+        error: 'OTP_RESEND_LIMIT',
+        message: 'Trop de tentatives. Réessayez dans 10 minutes.',
+      });
     }
 
     await this.prisma.otpCode.updateMany({
@@ -170,7 +208,9 @@ export class AuthService {
     const otp = this.generateOtp();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await this.prisma.otpCode.create({ data: { userId, code: otp, expiresAt } });
+    await this.prisma.otpCode.create({
+      data: { userId, code: otp, expiresAt },
+    });
 
     await this.emailQueue.sendEmail({
       to: user.email,
@@ -186,23 +226,40 @@ export class AuthService {
     const email = dto.email.toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, email: true, firstName: true, passwordHash: true, emailVerified: true, isActive: true, role: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        passwordHash: true,
+        emailVerified: true,
+        isActive: true,
+        role: true,
+      },
     });
 
     if (!user) {
-      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Email ou mot de passe incorrect.' });
+      throw new UnauthorizedException({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Email ou mot de passe incorrect.',
+      });
     }
 
     const locked = await this.cache.get<boolean>(`login_locked:${user.id}`);
     if (locked) {
       throw new HttpException(
-        { error: 'LOGIN_LOCKED', message: 'Compte verrouillé, réessayez dans 30 minutes.' },
+        {
+          error: 'LOGIN_LOCKED',
+          message: 'Compte verrouillé, réessayez dans 30 minutes.',
+        },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
     if (!user.passwordHash) {
-      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Email ou mot de passe incorrect.' });
+      throw new UnauthorizedException({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Email ou mot de passe incorrect.',
+      });
     }
     const passwordOk = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordOk) {
@@ -211,40 +268,56 @@ export class AuthService {
       if (count >= 5) {
         await this.cache.set(`login_locked:${user.id}`, true, 1800);
         await this.cache.del(attemptsKey);
-        this.emailQueue.sendEmail({
-          to: user.email,
-          subject: 'Votre compte Immo Plus CM a été verrouillé',
-          template: 'account-locked',
-          data: { name: user.firstName, unlockTime: '30 minutes' },
-        }).catch(() => {});
+        this.emailQueue
+          .sendEmail({
+            to: user.email,
+            subject: 'Votre compte Immo Plus CM a été verrouillé',
+            template: 'account-locked',
+            data: { name: user.firstName, unlockTime: '30 minutes' },
+          })
+          .catch(() => {});
         throw new HttpException(
-          { error: 'LOGIN_LOCKED', message: 'Compte verrouillé, réessayez dans 30 minutes.' },
+          {
+            error: 'LOGIN_LOCKED',
+            message: 'Compte verrouillé, réessayez dans 30 minutes.',
+          },
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }
-      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Email ou mot de passe incorrect.' });
+      throw new UnauthorizedException({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Email ou mot de passe incorrect.',
+      });
     }
 
     if (!user.emailVerified) {
-      throw new ForbiddenException({ error: 'PENDING_VERIFICATION', message: 'Vérifiez votre email avant de vous connecter.' });
+      throw new ForbiddenException({
+        error: 'PENDING_VERIFICATION',
+        message: 'Vérifiez votre email avant de vous connecter.',
+      });
     }
     if (!user.isActive) {
-      throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+      throw new ForbiddenException({
+        error: 'ACCOUNT_DISABLED',
+        message: 'Votre compte a été désactivé.',
+      });
     }
 
     await this.cache.del(`login_attempts:${user.id}`);
     await this.cache.del(`login_locked:${user.id}`);
 
     if (user.role === Role.ADMIN && context) {
-      this.prisma.adminAuditLog.create({
-        data: {
-          adminId: user.id,
-          action: AuditAction.USER_LOGIN,
-          ip: context.ip,
-          userAgent: context.userAgent,
-          result: 'SUCCESS',
-        },
-      }).catch(() => {});
+      this.prisma.adminAuditLog
+        .create({
+          data: {
+            adminId: user.id,
+            action: AuditAction.USER_LOGIN,
+            ip: context.ip,
+            userAgent: context.userAgent,
+            result: 'SUCCESS',
+          },
+        })
+        .catch(() => {});
     }
 
     return this.generateAuthResponse(user.id, user.email, user.role);
@@ -256,8 +329,15 @@ export class AuthService {
       include: { user: true },
     });
 
-    if (!tokenRecord || tokenRecord.revokedAt || tokenRecord.expiresAt < new Date()) {
-      throw new UnauthorizedException({ error: 'REFRESH_TOKEN_INVALID', message: 'Refresh token invalide ou révoqué.' });
+    if (
+      !tokenRecord ||
+      tokenRecord.revokedAt ||
+      tokenRecord.expiresAt < new Date()
+    ) {
+      throw new UnauthorizedException({
+        error: 'REFRESH_TOKEN_INVALID',
+        message: 'Refresh token invalide ou révoqué.',
+      });
     }
 
     await this.prisma.refreshToken.update({
@@ -279,15 +359,22 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const normalizedEmail = email.toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) {
-      return { message: 'Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.' };
+      return {
+        message:
+          'Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.',
+      };
     }
 
     const token = uuidv4();
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-    await this.prisma.passwordResetToken.create({ data: { userId: user.id, token, expiresAt } });
+    await this.prisma.passwordResetToken.create({
+      data: { userId: user.id, token, expiresAt },
+    });
 
     await this.emailQueue.sendEmail({
       to: user.email,
@@ -299,7 +386,10 @@ export class AuthService {
       },
     });
 
-    return { message: 'Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.' };
+    return {
+      message:
+        'Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.',
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
@@ -311,7 +401,11 @@ export class AuthService {
       where: { token: dto.token },
     });
 
-    if (!tokenRecord || tokenRecord.usedAt || tokenRecord.expiresAt < new Date()) {
+    if (
+      !tokenRecord ||
+      tokenRecord.usedAt ||
+      tokenRecord.expiresAt < new Date()
+    ) {
       throw new BadRequestException('Token invalide ou expiré.');
     }
 
@@ -332,20 +426,33 @@ export class AuthService {
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
     if (dto.newPassword !== dto.newPasswordConfirm) {
-      throw new BadRequestException('Les nouveaux mots de passe ne correspondent pas.');
+      throw new BadRequestException(
+        'Les nouveaux mots de passe ne correspondent pas.',
+      );
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable.');
 
     if (!user.passwordHash) {
-      throw new BadRequestException({ error: 'NO_PASSWORD', message: 'Ce compte utilise la connexion Google. Définissez un mot de passe depuis votre profil.' });
+      throw new BadRequestException({
+        error: 'NO_PASSWORD',
+        message:
+          'Ce compte utilise la connexion Google. Définissez un mot de passe depuis votre profil.',
+      });
     }
-    const isValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
-    if (!isValid) throw new UnauthorizedException('Mot de passe actuel incorrect.');
+    const isValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!isValid)
+      throw new UnauthorizedException('Mot de passe actuel incorrect.');
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -354,13 +461,23 @@ export class AuthService {
     return { message: 'Mot de passe modifié avec succès.' };
   }
 
-  async googleAuth(googleUser: { email: string; firstName: string; lastName: string; googleId: string }) {
+  async googleAuth(googleUser: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    googleId: string;
+  }) {
     const email = googleUser.email.toLowerCase();
-    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
 
     if (existingUser) {
       if (!existingUser.isActive) {
-        throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+        throw new ForbiddenException({
+          error: 'ACCOUNT_DISABLED',
+          message: 'Votre compte a été désactivé.',
+        });
       }
       if (!existingUser.googleId) {
         await this.prisma.user.update({
@@ -368,7 +485,11 @@ export class AuthService {
           data: { googleId: googleUser.googleId },
         });
       }
-      const authResp = await this.generateAuthResponse(existingUser.id, existingUser.email, existingUser.role);
+      const authResp = await this.generateAuthResponse(
+        existingUser.id,
+        existingUser.email,
+        existingUser.role,
+      );
       return { ...authResp, newUser: false };
     }
 
@@ -387,19 +508,38 @@ export class AuthService {
         },
         select: { id: true, email: true, role: true },
       });
-      const authResp = await this.generateAuthResponse(newUser.id, newUser.email, newUser.role);
+      const authResp = await this.generateAuthResponse(
+        newUser.id,
+        newUser.email,
+        newUser.role,
+      );
       return { ...authResp, newUser: true };
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const raceUser = await this.prisma.user.findUnique({ where: { email } });
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const raceUser = await this.prisma.user.findUnique({
+          where: { email },
+        });
         if (raceUser) {
           if (!raceUser.isActive) {
-            throw new ForbiddenException({ error: 'ACCOUNT_DISABLED', message: 'Votre compte a été désactivé.' });
+            throw new ForbiddenException({
+              error: 'ACCOUNT_DISABLED',
+              message: 'Votre compte a été désactivé.',
+            });
           }
           if (!raceUser.googleId) {
-            await this.prisma.user.update({ where: { id: raceUser.id }, data: { googleId: googleUser.googleId } });
+            await this.prisma.user.update({
+              where: { id: raceUser.id },
+              data: { googleId: googleUser.googleId },
+            });
           }
-          const authResp = await this.generateAuthResponse(raceUser.id, raceUser.email, raceUser.role);
+          const authResp = await this.generateAuthResponse(
+            raceUser.id,
+            raceUser.email,
+            raceUser.role,
+          );
           return { ...authResp, newUser: false };
         }
       }
@@ -413,13 +553,17 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable.');
     if (!user.googleId) {
-      throw new ForbiddenException({ error: 'GOOGLE_ONLY', message: 'Ce endpoint est réservé aux comptes connectés via Google.' });
+      throw new ForbiddenException({
+        error: 'GOOGLE_ONLY',
+        message: 'Ce endpoint est réservé aux comptes connectés via Google.',
+      });
     }
     await this.prisma.user.updateMany({
       where: { id: userId, role: 'VISITOR' },
       data: { role },
     });
-    const effectiveRole = user.role === 'VISITOR' ? role : (user.role as 'OWNER' | 'TENANT');
+    const effectiveRole =
+      user.role === 'VISITOR' ? role : (user.role as 'OWNER' | 'TENANT');
     return this.generateAuthResponse(userId, user.email, effectiveRole);
   }
 
@@ -429,7 +573,39 @@ export class AuthService {
     return randomInt(100000, 1000000).toString();
   }
 
-  private async generateAuthResponse(userId: string, email: string, role: string) {
+  /**
+   * Activates a 14-day free trial with full Professional access for a newly
+   * self-registered standalone OWNER. Not wrapped in the same transaction as
+   * user creation (the account itself must still exist even if this fails) —
+   * silently skipped if the Professional plan row is missing (defensive:
+   * registration must not break because seed data wasn't run).
+   */
+  private async activateFreeTrial(target: { ownerId: string }): Promise<void> {
+    const plan = await this.prisma.plan.findUnique({
+      where: { name: PlanName.PROFESSIONAL },
+    });
+    if (!plan) return;
+
+    const subscription = await this.prisma.subscription.create({
+      data: {
+        ownerId: target.ownerId,
+        planId: plan.id,
+        status: SubscriptionStatus.TRIAL,
+      },
+    });
+    await this.prisma.trial.create({
+      data: {
+        subscriptionId: subscription.id,
+        endsAt: addDays(new Date(), 14),
+      },
+    });
+  }
+
+  private async generateAuthResponse(
+    userId: string,
+    email: string,
+    role: string,
+  ) {
     const payload = { sub: userId, email, role };
 
     const accessToken = this.jwt.sign(payload, {

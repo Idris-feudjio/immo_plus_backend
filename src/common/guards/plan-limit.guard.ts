@@ -3,11 +3,12 @@ import { Reflector } from '@nestjs/core';
 import { PLAN_LIMIT_KEY } from '../decorators/check-plan-limit.decorator';
 
 /**
- * STUB — Epic 2 (Story 2.1) will replace this with a real quota check via
- * PlanLimitService. No Plan/Subscription/Organization model exists yet in the
- * Prisma schema, so no business logic belongs here until Epic 2 is built.
- * Always allows — @CheckPlanLimit(resource) is only a pre-wired attachment
- * point for Epic 2 to fill in later.
+ * STUB — still always allows. Story 2.1 introduced Plan/Subscription/Trial
+ * and a real, unit-tested PlanLimitService (src/plans/plan-limit.service.ts),
+ * but this guard deliberately does not call it yet: wiring PlanLimitService
+ * into this guard and returning 403 PLAN_LIMIT_EXCEEDED is Story 2.2's scope,
+ * bundled together with deploying @CheckPlanLimit on the other endpoints it
+ * needs to cover (users, PDF) as one coherent change.
  */
 @Injectable()
 export class PlanLimitGuard implements CanActivate {

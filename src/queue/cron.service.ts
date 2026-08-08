@@ -6,6 +6,7 @@ import {
   MandateStatus,
   PaymentStatus,
   PropertyStatus,
+  SubscriptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
@@ -148,6 +149,21 @@ export class CronService {
 
       this.logger.log(`Sent ${contracts.length} expiry alerts for J-${days}.`);
     }
+  }
+
+  @Cron('25 0 * * *')
+  async expireTrials() {
+    // planId stays untouched (still Professional) — the real downgrade/block
+    // is Story 2.4's scope, this only marks the status transition. No email
+    // either (J-7/J-1 reminders + expiry email are also Story 2.4).
+    const result = await this.prisma.subscription.updateMany({
+      where: {
+        status: SubscriptionStatus.TRIAL,
+        trial: { endsAt: { lt: new Date() } },
+      },
+      data: { status: SubscriptionStatus.EXPIRED },
+    });
+    this.logger.log(`Expired ${result.count} trials.`);
   }
 
   @Cron('20 0 * * *')

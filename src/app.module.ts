@@ -31,6 +31,7 @@ import { ApplicationsModule } from './applications/applications.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { AgenciesModule } from './agencies/agencies.module';
 import { CommissionsModule } from './commissions/commissions.module';
+import { PlansModule } from './plans/plans.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -75,6 +76,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     ApplicationsModule,
     MaintenanceModule,
     AgenciesModule,
+    PlansModule,
     CommissionsModule,
   ],
   providers: [

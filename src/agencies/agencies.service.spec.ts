@@ -19,6 +19,9 @@ function mockPrisma() {
   const tx = {
     agency: { create: jest.fn() },
     agencyMember: { findFirst: jest.fn(), create: jest.fn() },
+    plan: { findUnique: jest.fn().mockResolvedValue(null) },
+    subscription: { create: jest.fn() },
+    trial: { create: jest.fn() },
   };
   return {
     agency: {
@@ -201,6 +204,52 @@ describe('AgenciesService', () => {
         expect.any(Function),
         expect.objectContaining({ isolationLevel: 'Serializable' }),
       );
+    });
+
+    describe('free trial activation (story 2.1)', () => {
+      beforeEach(() => {
+        prisma._tx.plan.findUnique.mockResolvedValue({ id: 'plan-pro' });
+        prisma._tx.subscription.create.mockResolvedValue({
+          id: 'sub-agency-1',
+        });
+      });
+
+      it('creates a TRIAL Subscription + Trial (14 days) for the new agency, in the same transaction', async () => {
+        await service.createAgency(MANAGER_USER, CREATE_AGENCY_DTO);
+
+        expect(prisma._tx.plan.findUnique).toHaveBeenCalledWith({
+          where: { name: 'PROFESSIONAL' },
+        });
+        expect(prisma._tx.subscription.create).toHaveBeenCalledWith({
+          data: { agencyId: 'agency-1', planId: 'plan-pro', status: 'TRIAL' },
+        });
+        expect(prisma._tx.trial.create).toHaveBeenCalledWith({
+          data: { subscriptionId: 'sub-agency-1', endsAt: expect.any(Date) },
+        });
+      });
+
+      it('rolls back the agency creation if the Subscription write fails (same transaction)', async () => {
+        prisma._tx.subscription.create.mockRejectedValue(new Error('db error'));
+
+        await expect(
+          service.createAgency(MANAGER_USER, CREATE_AGENCY_DTO),
+        ).rejects.toThrow('db error');
+        // The transaction callback throwing means Prisma would roll back everything,
+        // including the agency.create call already issued earlier in the same callback.
+        expect(prisma.$transaction).toHaveBeenCalled();
+      });
+
+      it('does not fail agency creation when the Professional plan is missing (fail-open)', async () => {
+        prisma._tx.plan.findUnique.mockResolvedValue(null);
+
+        const result = await service.createAgency(
+          MANAGER_USER,
+          CREATE_AGENCY_DTO,
+        );
+
+        expect(result).toEqual(AGENCY_STUB);
+        expect(prisma._tx.subscription.create).not.toHaveBeenCalled();
+      });
     });
 
     it('throws ConflictException("AGENCY_EMAIL_ALREADY_EXISTS") when the P2002 conflict targets the agency email', async () => {

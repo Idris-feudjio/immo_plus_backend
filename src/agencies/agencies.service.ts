@@ -11,9 +11,12 @@ import {
   AgencyMemberRole,
   AgencyStatus,
   MandateStatus,
+  PlanName,
   Prisma,
   Role,
+  SubscriptionStatus,
 } from '@prisma/client';
+import { addDays } from 'date-fns';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { BaseService } from '../common/abstractions/base.service';
@@ -70,6 +73,30 @@ export class AgenciesService extends BaseService<Agency, AgencyCreateData> {
                 agencyId: agency.id,
                 userId: user.id,
                 role: AgencyMemberRole.ADMIN,
+              },
+            });
+          }
+
+          // A pre-existing standalone Subscription the creator may already
+          // have (from their own OWNER registration) is deliberately left
+          // untouched here — resolveSubscriptionContext() always prioritizes
+          // an agency's Subscription once the user has an agencyMembership,
+          // so it simply becomes unconsulted rather than merged or deleted.
+          const plan = await tx.plan.findUnique({
+            where: { name: PlanName.PROFESSIONAL },
+          });
+          if (plan) {
+            const subscription = await tx.subscription.create({
+              data: {
+                agencyId: agency.id,
+                planId: plan.id,
+                status: SubscriptionStatus.TRIAL,
+              },
+            });
+            await tx.trial.create({
+              data: {
+                subscriptionId: subscription.id,
+                endsAt: addDays(new Date(), 14),
               },
             });
           }

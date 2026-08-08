@@ -23,6 +23,9 @@ function mockPrisma() {
       findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    subscription: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 }
 
@@ -267,6 +270,58 @@ describe('CronService — sendLeaseExpiryAlerts (J-30 email)', () => {
     await service.sendLeaseExpiryAlerts();
 
     expect(emailQueue.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ─── expireTrials ───────────────────────────────────────────────────────────
+
+describe('CronService — expireTrials', () => {
+  let service: CronService;
+  let prisma: ReturnType<typeof mockPrisma>;
+  let emailQueue: ReturnType<typeof mockEmailQueue>;
+
+  beforeEach(() => {
+    prisma = mockPrisma();
+    emailQueue = mockEmailQueue();
+    service = new CronService(prisma as never, emailQueue as never);
+  });
+
+  it('expires TRIAL subscriptions whose Trial.endsAt is in the past', async () => {
+    prisma.subscription.updateMany.mockResolvedValue({ count: 3 });
+
+    await service.expireTrials();
+
+    expect(prisma.subscription.updateMany).toHaveBeenCalledWith({
+      where: { status: 'TRIAL', trial: { endsAt: { lt: expect.any(Date) } } },
+      data: { status: 'EXPIRED' },
+    });
+  });
+
+  it('only guards on status: TRIAL — never touches ACTIVE/CANCELLED subscriptions even with a past Trial.endsAt', async () => {
+    await service.expireTrials();
+
+    expect(prisma.subscription.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'TRIAL' }),
+      }),
+    );
+  });
+
+  it('does not send any email (J-7/J-1 reminders are Story 2.4)', async () => {
+    await service.expireTrials();
+
+    expect(emailQueue.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('logs the number of expired trials', async () => {
+    prisma.subscription.updateMany.mockResolvedValue({ count: 2 });
+    const logSpy = jest
+      .spyOn(service['logger'], 'log')
+      .mockImplementation(() => undefined);
+
+    await service.expireTrials();
+
+    expect(logSpy).toHaveBeenCalledWith('Expired 2 trials.');
   });
 });
 

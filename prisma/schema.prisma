@@ -162,6 +162,7 @@ model User {
   adminAuditLogs      AdminAuditLog[]         @relation("AdminAuditAdmin")
   targetAuditLogs     AdminAuditLog[]         @relation("AdminAuditTarget")
   applications        Application[]
+  subscription        Subscription?
 
   @@map("users")
 }
@@ -504,6 +505,7 @@ model Agency {
   mandates          Mandate[]
   commissions       Commission[]
   contractTemplates ContractTemplate[]
+  subscription      Subscription?
 
   @@map("agencies")
 }
@@ -627,4 +629,63 @@ model AdminAuditLog {
   @@index([action])
   @@index([createdAt])
   @@map("admin_audit_logs")
+}
+
+enum PlanName {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+model Plan {
+  id             String   @id @default(uuid())
+  name           PlanName @unique
+  maxProperties  Int?
+  maxUsers       Int?
+  maxPdfPerMonth Int?
+  createdAt      DateTime @default(now())
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  // Exactement UN des deux doit être renseigné (garde applicative, pas de
+  // contrainte DB — cohérent avec le reste de ce codebase qui valide ce
+  // genre de règle au niveau service, pas via CHECK constraint) :
+  agencyId         String?            @unique
+  ownerId          String?            @unique
+  planId           String
+  status           SubscriptionStatus @default(TRIAL)
+  currentPeriodEnd DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  agency Agency? @relation(fields: [agencyId], references: [id])
+  owner  User?   @relation(fields: [ownerId], references: [id])
+  plan   Plan    @relation(fields: [planId], references: [id])
+  trial  Trial?
+
+  @@map("subscriptions")
+}
+
+model Trial {
+  id             String    @id @default(uuid())
+  subscriptionId String    @unique
+  startedAt      DateTime  @default(now())
+  endsAt         DateTime
+  convertedAt    DateTime?
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("trials")
 }
