@@ -28,6 +28,15 @@ export class NotificationsProcessor extends WorkerHost {
       to: data.to,
       subject: data.subject,
       html: this.renderTemplate(data.template, data.data),
+      attachments: data.attachment
+        ? [
+            {
+              filename: data.attachment.filename,
+              content: Buffer.from(data.attachment.contentBase64, 'base64'),
+              contentType: data.attachment.contentType,
+            },
+          ]
+        : undefined,
     });
 
     this.logger.log(`Email sent to ${data.to} (template: ${data.template})`);

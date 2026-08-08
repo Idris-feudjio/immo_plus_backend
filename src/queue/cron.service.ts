@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { addDays, endOfDay, startOfDay } from 'date-fns';
-import { ContractStatus, MandateStatus, PaymentStatus, PropertyStatus } from '@prisma/client';
+import { addDays, endOfDay, format, startOfDay } from 'date-fns';
+import {
+  ContractStatus,
+  MandateStatus,
+  PaymentStatus,
+  PropertyStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
 
@@ -84,7 +89,28 @@ export class CronService {
           status: ContractStatus.ACTIVE,
           endDate: { gte: startOfTarget, lte: endOfTarget },
         },
-        include: { property: true },
+        include: {
+          property: {
+            include: {
+              owner: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              manager: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+        },
       });
 
       for (const contract of contracts) {
@@ -96,6 +122,28 @@ export class CronService {
             body: `Le bail pour "${contract.property.title}" expire dans ${days} jours.`,
           },
         });
+
+        if (days === 30) {
+          const recipients = [
+            contract.property.owner,
+            ...(contract.property.manager ? [contract.property.manager] : []),
+          ];
+          const message = `Le bail pour "${contract.property.title}" expire dans 30 jours (le ${format(contract.endDate, 'dd/MM/yyyy')}). Pensez à anticiper un renouvellement ou une résiliation.`;
+
+          await Promise.all(
+            recipients.map((r) =>
+              this.emailQueue.sendEmail({
+                to: r.email,
+                subject: `Bail expirant dans 30 jours — ${contract.property.title}`,
+                template: 'lease-expiring-j30',
+                data: {
+                  recipientName: `${r.firstName} ${r.lastName}`,
+                  message,
+                },
+              }),
+            ),
+          );
+        }
       }
 
       this.logger.log(`Sent ${contracts.length} expiry alerts for J-${days}.`);
@@ -105,7 +153,11 @@ export class CronService {
   @Cron('20 0 * * *')
   async expireMandates() {
     const toExpire = await this.prisma.mandate.findMany({
-      where: { status: MandateStatus.ACTIVE, endDate: { lt: new Date() }, deletedAt: null },
+      where: {
+        status: MandateStatus.ACTIVE,
+        endDate: { lt: new Date() },
+        deletedAt: null,
+      },
       select: { id: true, propertyId: true, managerId: true },
     });
 
@@ -140,7 +192,9 @@ export class CronService {
     const configs = await this.prisma.paymentAlertConfig.findMany({
       where: { active: true },
       include: {
-        user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        user: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
       },
     });
 
@@ -160,8 +214,16 @@ export class CronService {
       });
 
       for (const payment of prePayments) {
-        if (await this.isSuppressed(config.userId, payment.tenantId, startOfMonth)) continue;
-        await this.dispatchAlert(config.user, payment, 'pre', config.daysBeforeDue);
+        if (
+          await this.isSuppressed(config.userId, payment.tenantId, startOfMonth)
+        )
+          continue;
+        await this.dispatchAlert(
+          config.user,
+          payment,
+          'pre',
+          config.daysBeforeDue,
+        );
         alertCount++;
       }
 
@@ -181,7 +243,14 @@ export class CronService {
         });
 
         for (const payment of latePayments) {
-          if (await this.isSuppressed(config.userId, payment.tenantId, startOfMonth)) continue;
+          if (
+            await this.isSuppressed(
+              config.userId,
+              payment.tenantId,
+              startOfMonth,
+            )
+          )
+            continue;
           await this.dispatchAlert(config.user, payment, 'late', daysLate);
           alertCount++;
         }
@@ -193,7 +262,11 @@ export class CronService {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
-  private async isSuppressed(ownerId: string, tenantId: string, since: Date): Promise<boolean> {
+  private async isSuppressed(
+    ownerId: string,
+    tenantId: string,
+    since: Date,
+  ): Promise<boolean> {
     const count = await this.prisma.notification.count({
       where: {
         userId: ownerId,
@@ -207,7 +280,14 @@ export class CronService {
 
   private async dispatchAlert(
     owner: { id: string; email: string; firstName: string; lastName: string },
-    payment: { tenantId: string; amount: number; period: string; dueDate: Date; tenant: { firstName: string; lastName: string }; property: { title: string } },
+    payment: {
+      tenantId: string;
+      amount: number;
+      period: string;
+      dueDate: Date;
+      tenant: { firstName: string; lastName: string };
+      property: { title: string };
+    },
     kind: 'pre' | 'late',
     days: number,
   ): Promise<void> {

@@ -4,10 +4,20 @@ import { CronService } from './cron.service';
 
 function mockPrisma() {
   return {
-    payment: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findMany: jest.fn().mockResolvedValue([]) },
+    payment: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     contract: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
-    property: { update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    notification: { create: jest.fn().mockResolvedValue({}), createMany: jest.fn(), count: jest.fn().mockResolvedValue(0) },
+    property: {
+      update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    notification: {
+      create: jest.fn().mockResolvedValue({}),
+      createMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+    },
     paymentAlertConfig: { findMany: jest.fn().mockResolvedValue([]) },
     mandate: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -22,7 +32,12 @@ function mockEmailQueue() {
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const OWNER = { id: 'owner-1', email: 'owner@test.cm', firstName: 'Marc', lastName: 'Dupont' };
+const OWNER = {
+  id: 'owner-1',
+  email: 'owner@test.cm',
+  firstName: 'Marc',
+  lastName: 'Dupont',
+};
 
 const BASE_CONFIG = {
   userId: 'owner-1',
@@ -65,8 +80,8 @@ describe('CronService — sendPaymentAlerts', () => {
   it('queues pre-due alert email when PENDING payment due in daysBeforeDue days', async () => {
     prisma.paymentAlertConfig.findMany.mockResolvedValue([BASE_CONFIG]);
     prisma.payment.findMany
-      .mockResolvedValueOnce([PENDING_PAYMENT])  // pre-due query
-      .mockResolvedValue([]);                      // late queries return empty
+      .mockResolvedValueOnce([PENDING_PAYMENT]) // pre-due query
+      .mockResolvedValue([]); // late queries return empty
 
     await service.sendPaymentAlerts();
 
@@ -82,9 +97,9 @@ describe('CronService — sendPaymentAlerts', () => {
   it('queues late-alert email when LATE payment matches daysAfterDue', async () => {
     prisma.paymentAlertConfig.findMany.mockResolvedValue([BASE_CONFIG]);
     prisma.payment.findMany
-      .mockResolvedValueOnce([])              // pre-due: nothing
-      .mockResolvedValueOnce([LATE_PAYMENT])  // daysAfterDue[0] = 1 day late
-      .mockResolvedValue([]);                  // rest empty
+      .mockResolvedValueOnce([]) // pre-due: nothing
+      .mockResolvedValueOnce([LATE_PAYMENT]) // daysAfterDue[0] = 1 day late
+      .mockResolvedValue([]); // rest empty
 
     await service.sendPaymentAlerts();
 
@@ -167,6 +182,94 @@ describe('CronService — sendPaymentAlerts', () => {
   });
 });
 
+// ─── sendLeaseExpiryAlerts — J-30 email ────────────────────────────────────────
+
+describe('CronService — sendLeaseExpiryAlerts (J-30 email)', () => {
+  let service: CronService;
+  let prisma: ReturnType<typeof mockPrisma>;
+  let emailQueue: ReturnType<typeof mockEmailQueue>;
+
+  const OWNER = {
+    id: 'owner-1',
+    email: 'owner@test.cm',
+    firstName: 'Marc',
+    lastName: 'Dupont',
+  };
+  const MANAGER = {
+    id: 'mgr-1',
+    email: 'manager@test.cm',
+    firstName: 'Alice',
+    lastName: 'Ngo',
+  };
+
+  const CONTRACT_J30 = {
+    id: 'c-1',
+    endDate: new Date(),
+    property: {
+      title: 'Villa Bastos',
+      ownerId: OWNER.id,
+      owner: OWNER,
+      manager: null as typeof MANAGER | null,
+    },
+  };
+
+  beforeEach(() => {
+    prisma = mockPrisma();
+    emailQueue = mockEmailQueue();
+    service = new CronService(prisma as never, emailQueue as never);
+  });
+
+  it('sends a J-30 email to the owner only when no manager is delegated', async () => {
+    prisma.contract.findMany
+      .mockResolvedValueOnce([]) // J-7
+      .mockResolvedValueOnce([]) // J-15
+      .mockResolvedValueOnce([CONTRACT_J30]); // J-30
+
+    await service.sendLeaseExpiryAlerts();
+
+    expect(emailQueue.sendEmail).toHaveBeenCalledTimes(1);
+    expect(emailQueue.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: OWNER.email,
+        template: 'lease-expiring-j30',
+      }),
+    );
+  });
+
+  it('sends a J-30 email to both owner and manager when a manager is delegated', async () => {
+    prisma.contract.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          ...CONTRACT_J30,
+          property: { ...CONTRACT_J30.property, manager: MANAGER },
+        },
+      ]);
+
+    await service.sendLeaseExpiryAlerts();
+
+    expect(emailQueue.sendEmail).toHaveBeenCalledTimes(2);
+    expect(emailQueue.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: OWNER.email }),
+    );
+    expect(emailQueue.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: MANAGER.email }),
+    );
+  });
+
+  it('does not send an email for J-7 or J-15 thresholds', async () => {
+    prisma.contract.findMany
+      .mockResolvedValueOnce([CONTRACT_J30]) // J-7
+      .mockResolvedValueOnce([CONTRACT_J30]) // J-15
+      .mockResolvedValueOnce([]); // J-30
+
+    await service.sendLeaseExpiryAlerts();
+
+    expect(emailQueue.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
 // ─── expireMandates ───────────────────────────────────────────────────────────
 
 describe('CronService — expireMandates', () => {
@@ -218,7 +321,9 @@ describe('CronService — expireMandates', () => {
 
   it('logs the count and does not call updateMany when no mandates to expire', async () => {
     prisma.mandate.findMany.mockResolvedValue([]);
-    const logSpy = jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
+    const logSpy = jest
+      .spyOn(service['logger'], 'log')
+      .mockImplementation(() => undefined);
 
     await service.expireMandates();
 

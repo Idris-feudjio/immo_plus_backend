@@ -10,6 +10,7 @@ import type {
 function contractVm(): ContractPdfVm {
   return {
     contractId: 'contract-1',
+    lang: 'fr',
     ownerFirstName: 'Jean',
     ownerLastName: 'Dupont',
     ownerAddress: '1 rue des Bougainvilliers, Yaoundé',

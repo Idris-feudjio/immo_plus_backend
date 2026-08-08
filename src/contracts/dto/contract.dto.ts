@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 
 export class CreateContractDto {
   @ApiProperty()
@@ -42,6 +49,11 @@ export class CreateContractDto {
   @IsOptional()
   @IsString({ each: true })
   clauses?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
 }
 
 export class RenewContractDto {

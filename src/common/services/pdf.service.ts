@@ -1,33 +1,78 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { fr, enUS } from 'date-fns/locale';
 import type { ContractPdfVm } from './pdf-view-models';
 import type { ReceiptPdfVm } from './pdf-view-models';
 import type { CommissionReceiptPdfVm } from './pdf-view-models';
 
+// Labels only — business values (amounts, names, clauses, FCFA) are never translated.
+const CONTRACT_LABELS = {
+  fr: {
+    title: 'CONTRAT DE LOCATION',
+    landlord: 'BAILLEUR',
+    tenant: 'LOCATAIRE',
+    idNumber: "Pièce d'identité",
+    property: 'BIEN LOUÉ',
+    period: 'PÉRIODE',
+    periodText: (start: string, end: string) => `Du ${start} au ${end}`,
+    finance: 'CONDITIONS FINANCIÈRES',
+    rentHT: 'Loyer HT',
+    tva: (rate: number) => `TVA ${rate}%`,
+    rentTTC: 'Loyer TTC',
+    fees: 'Charges',
+    deposit: 'Dépôt de garantie',
+    clauses: 'CLAUSES PARTICULIÈRES',
+    signatureLandlord: 'Signature du Bailleur',
+    signatureTenant: 'Signature du Locataire',
+    dateFormat: 'dd MMMM yyyy',
+    locale: fr,
+  },
+  en: {
+    title: 'LEASE AGREEMENT',
+    landlord: 'LANDLORD',
+    tenant: 'TENANT',
+    idNumber: 'ID number',
+    property: 'RENTED PROPERTY',
+    period: 'PERIOD',
+    periodText: (start: string, end: string) => `From ${start} to ${end}`,
+    finance: 'FINANCIAL TERMS',
+    rentHT: 'Rent (excl. VAT)',
+    tva: (rate: number) => `VAT ${rate}%`,
+    rentTTC: 'Rent (incl. VAT)',
+    fees: 'Fees',
+    deposit: 'Security deposit',
+    clauses: 'SPECIAL CLAUSES',
+    signatureLandlord: 'Landlord signature',
+    signatureTenant: 'Tenant signature',
+    dateFormat: 'MMMM dd, yyyy',
+    locale: enUS,
+  },
+} as const;
+
 @Injectable()
 export class PdfService {
   async generateContractPdf(vm: ContractPdfVm): Promise<Buffer> {
+    const l = CONTRACT_LABELS[vm.lang];
+
     return this.streamToBuffer((doc) => {
       doc
         .fontSize(16)
         .font('Helvetica-Bold')
-        .text('CONTRAT DE LOCATION', { align: 'center' });
+        .text(l.title, { align: 'center' });
       doc.moveDown();
 
-      doc.fontSize(11).font('Helvetica-Bold').text('BAILLEUR');
+      doc.fontSize(11).font('Helvetica-Bold').text(l.landlord);
       doc.font('Helvetica').text(`${vm.ownerFirstName} ${vm.ownerLastName}`);
       if (vm.ownerAddress) doc.text(vm.ownerAddress);
       doc.moveDown();
 
-      doc.font('Helvetica-Bold').text('LOCATAIRE');
+      doc.font('Helvetica-Bold').text(l.tenant);
       doc.font('Helvetica').text(`${vm.tenantFirstName} ${vm.tenantLastName}`);
-      if (vm.tenantIdNumber)
-        doc.text(`Pièce d'identité: ${vm.tenantIdNumber}`);
+      if (vm.tenantIdNumber) doc.text(`${l.idNumber}: ${vm.tenantIdNumber}`);
       doc.moveDown();
 
-      doc.font('Helvetica-Bold').text('BIEN LOUÉ');
+      doc.font('Helvetica-Bold').text(l.property);
       doc
         .font('Helvetica')
         .text(
@@ -35,26 +80,29 @@ export class PdfService {
         );
       doc.moveDown();
 
-      doc.font('Helvetica-Bold').text('PÉRIODE');
+      doc.font('Helvetica-Bold').text(l.period);
       doc
         .font('Helvetica')
         .text(
-          `Du ${format(vm.startDate, 'dd MMMM yyyy', { locale: fr })} au ${format(vm.endDate, 'dd MMMM yyyy', { locale: fr })}`,
+          l.periodText(
+            format(vm.startDate, l.dateFormat, { locale: l.locale }),
+            format(vm.endDate, l.dateFormat, { locale: l.locale }),
+          ),
         );
       doc.moveDown();
 
-      doc.font('Helvetica-Bold').text('CONDITIONS FINANCIÈRES');
+      doc.font('Helvetica-Bold').text(l.finance);
       doc
         .font('Helvetica')
-        .text(`Loyer HT          : ${this.formatFcfa(vm.rentHT)}`)
-        .text(`TVA ${vm.tvaRate}%        : ${this.formatFcfa(vm.tvaAmount)}`)
-        .text(`Loyer TTC         : ${this.formatFcfa(vm.rentTTC)}`)
-        .text(`Charges           : ${this.formatFcfa(vm.fees)}`)
-        .text(`Dépôt de garantie : ${this.formatFcfa(vm.deposit)}`);
+        .text(`${l.rentHT}          : ${this.formatFcfa(vm.rentHT)}`)
+        .text(`${l.tva(vm.tvaRate)}        : ${this.formatFcfa(vm.tvaAmount)}`)
+        .text(`${l.rentTTC}         : ${this.formatFcfa(vm.rentTTC)}`)
+        .text(`${l.fees}           : ${this.formatFcfa(vm.fees)}`)
+        .text(`${l.deposit} : ${this.formatFcfa(vm.deposit)}`);
       doc.moveDown();
 
       if (vm.clauses.length > 0) {
-        doc.font('Helvetica-Bold').text('CLAUSES PARTICULIÈRES');
+        doc.font('Helvetica-Bold').text(l.clauses);
         vm.clauses.forEach((clause, i) => {
           doc.font('Helvetica').text(`${i + 1}. ${clause}`);
         });
@@ -64,9 +112,9 @@ export class PdfService {
       doc.moveDown(2);
       doc
         .font('Helvetica')
-        .text('Signature du Bailleur   : ___________________________')
+        .text(`${l.signatureLandlord}   : ___________________________`)
         .moveDown()
-        .text('Signature du Locataire : ___________________________');
+        .text(`${l.signatureTenant} : ___________________________`);
     });
   }
 
@@ -88,9 +136,7 @@ export class PdfService {
       doc.moveDown();
 
       doc.font('Helvetica-Bold').text('LOCATAIRE');
-      doc
-        .font('Helvetica')
-        .text(`${vm.tenantFirstName} ${vm.tenantLastName}`);
+      doc.font('Helvetica').text(`${vm.tenantFirstName} ${vm.tenantLastName}`);
       doc.moveDown();
 
       doc.font('Helvetica-Bold').text('BIEN');
@@ -136,9 +182,7 @@ export class PdfService {
       doc.moveDown();
 
       doc.font('Helvetica-Bold').text('PROPRIÉTAIRE');
-      doc
-        .font('Helvetica')
-        .text(`${vm.ownerFirstName} ${vm.ownerLastName}`);
+      doc.font('Helvetica').text(`${vm.ownerFirstName} ${vm.ownerLastName}`);
       doc.moveDown();
 
       doc.font('Helvetica-Bold').text('BIEN CONCERNÉ');

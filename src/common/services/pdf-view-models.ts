@@ -1,5 +1,6 @@
 export interface ContractPdfVm {
   contractId: string;
+  lang: 'fr' | 'en';
   ownerFirstName: string;
   ownerLastName: string;
   ownerAddress?: string;

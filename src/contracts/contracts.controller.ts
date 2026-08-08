@@ -7,11 +7,14 @@ import {
   Param,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
+import type { Request } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { SearchRequestDto } from '../common/dto/pagination.dto';
 import {
@@ -40,6 +43,25 @@ export class ContractsController {
     return this.service.createContract(user.id, user.role, dto);
   }
 
+  @Public()
+  @Get('accept/:token')
+  @ApiOperation({ summary: "Résumé d'un contrat en attente de signature" })
+  getAcceptanceSummary(@Param('token') token: string) {
+    return this.service.getAcceptanceSummary(token);
+  }
+
+  @Public()
+  @Post('accept/:token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Accepter un contrat via le lien de signature' })
+  acceptContract(@Param('token') token: string, @Req() req: Request) {
+    const forwarded = (req.headers['x-forwarded-for'] as string | undefined)
+      ?.split(',')[0]
+      ?.trim();
+    const ip = forwarded || req.ip || 'unknown';
+    return this.service.acceptContract(token, ip);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: "Détail d'un contrat" })
   getOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
@@ -50,7 +72,11 @@ export class ContractsController {
   @Roles(Role.OWNER, Role.MANAGER, Role.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Renouveler un contrat' })
-  renew(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: RenewContractDto) {
+  renew(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: RenewContractDto,
+  ) {
     return this.service.renew(id, user.id, user.role, dto);
   }
 
@@ -71,9 +97,17 @@ export class ContractsController {
   getPdf(
     @Param('id') id: string,
     @CurrentUser() user: AuthUser,
+    @Query('lang') lang?: string,
     @Query('force') force?: string,
   ) {
-    return this.service.getPdfUrl(id, user.id, user.role, force === 'true');
+    const resolvedLang = lang === 'en' ? 'en' : 'fr';
+    return this.service.getPdfUrl(
+      id,
+      user.id,
+      user.role,
+      resolvedLang,
+      force === 'true',
+    );
   }
 
   @Post(':id/receipts')

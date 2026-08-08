@@ -17,7 +17,13 @@ export class UnitOfWorkService {
    *   await tx.payment.create({ data: ... });
    * });
    */
-  execute<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    return this.prisma.$transaction(fn);
+  execute<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    isolationLevel?: Prisma.TransactionIsolationLevel,
+  ): Promise<T> {
+    return this.prisma.$transaction(
+      fn,
+      isolationLevel ? { isolationLevel } : undefined,
+    );
   }
 }

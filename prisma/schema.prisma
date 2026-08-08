@@ -34,6 +34,8 @@ enum PropertyStatus {
 }
 
 enum ContractStatus {
+  DRAFT
+  PENDING_SIGNATURE
   ACTIVE
   EXPIRED
   TERMINATED
@@ -316,19 +318,26 @@ model Application {
 }
 
 model Contract {
-  id               String         @id @default(uuid())
-  propertyId       String
-  tenantId         String
-  startDate        DateTime       @db.Date
-  endDate          DateTime       @db.Date
-  rent             Int
-  fees             Int            @default(0)
-  deposit          Int
-  status           ContractStatus @default(ACTIVE)
-  parentContractId String?
-  pdfUrl           String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                      String         @id @default(uuid())
+  propertyId              String
+  tenantId                String
+  startDate               DateTime       @db.Date
+  endDate                 DateTime       @db.Date
+  rent                    Int
+  fees                    Int            @default(0)
+  deposit                 Int
+  tvaRate                 Float          @default(19.25)
+  tvaAmount               Int            @default(0)
+  status                  ContractStatus @default(ACTIVE)
+  parentContractId        String?
+  pdfUrl                  String?
+  pdfLang                 String?
+  signatureToken          String?        @unique
+  signatureTokenExpiresAt DateTime?
+  acceptedAt              DateTime?
+  acceptedIp              String?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
 
   property       Property         @relation(fields: [propertyId], references: [id])
   tenant         Tenant           @relation(fields: [tenantId], references: [id])
@@ -491,11 +500,46 @@ model Agency {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  members     AgencyMember[]
-  mandates    Mandate[]
-  commissions Commission[]
+  members           AgencyMember[]
+  mandates          Mandate[]
+  commissions       Commission[]
+  contractTemplates ContractTemplate[]
 
   @@map("agencies")
+}
+
+enum ContractSection {
+  PARTIES
+  PROPERTY
+  RENT
+  DURATION
+  SIGNATURE_DATE
+}
+
+model ContractTemplate {
+  id             String            @id @default(uuid())
+  agencyId       String
+  name           String            @db.VarChar(255)
+  lockedSections ContractSection[] @default([])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  agency  Agency                 @relation(fields: [agencyId], references: [id])
+  clauses ContractTemplateClause[]
+
+  @@index([agencyId])
+  @@map("contract_templates")
+}
+
+model ContractTemplateClause {
+  id         String @id @default(uuid())
+  templateId String
+  text       String
+  order      Int    @db.SmallInt
+
+  template ContractTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("contract_template_clauses")
 }
 
 model AgencyMember {
